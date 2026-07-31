@@ -8,8 +8,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.1] — the solver stops fighting React hydration
 
-`@shieldfont/react` only. `@shieldfont/core` and `@shieldfont/font` are
-unchanged and stay at 0.3.0.
+The fix is in `@shieldfont/react`. `@shieldfont/core` and `@shieldfont/font`
+have no changes in this release and are republished at 0.3.1 only because the
+three version together — the publish workflow refuses a tag that any package
+disagrees with, which is what keeps a mismatched number off npm.
 
 ### Fixed
 
