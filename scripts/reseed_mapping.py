@@ -40,7 +40,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_PAIRS = ROOT / "benchmarks/v7/data/pairs_v7_alpha_v15_0_1_0_0_0_0.json"
+DEFAULT_PAIRS = ROOT / "benchmark/data/v7/pairs_v7_alpha_v15_0_1_0_0_0_0.json"
 
 
 def main() -> int:
