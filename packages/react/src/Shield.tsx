@@ -1756,6 +1756,38 @@ function puzzleLabel(tag: string | null, ordinal: number, seconds: number): stri
   return `Unlock the plain text for ${nounFor(tag)} ${ordinal} (up to ${seconds} seconds)`;
 }
 
+/**
+ * The two elements the solver WRITES TEXT INTO are rendered with an empty
+ * `dangerouslySetInnerHTML` rather than as empty JSX elements. Nothing is
+ * injected — the payload is a constant empty string — and the point is not what
+ * it puts in but what it tells React: an element with `dangerouslySetInnerHTML`
+ * has no child fibers, so React neither hydrates nor reconciles anything inside
+ * it, and the solver's writes stop being React's business.
+ *
+ * Without this the script and the hydration pass fight over the same nodes. The
+ * solver runs at parse time (see ./solver.ts), so on a return visit — where the
+ * plain text comes straight out of localStorage, before any button is pressed —
+ * `out` and the status line already hold text by the time React arrives to
+ * hydrate two elements it rendered EMPTY. React does not tolerate that: it
+ * either throws a hydration error and re-renders the subtree, or quietly deletes
+ * the text node it did not create. The second outcome is the dangerous one,
+ * because it deletes exactly the words a disabled reader waited for, leaves no
+ * console error behind, and cannot self-correct — `wire()` has already stamped
+ * the button, so the next sweep returns early and the text never comes back.
+ *
+ * This is the same lesson the font-load guard learned one screen up: anything
+ * that touches the DOM before hydration has to be invisible to reconciliation.
+ * The guard's answer was a stylesheet; here it is an opaque container.
+ *
+ * The ATTRIBUTE writes around these elements (`hidden`, `display`, `tabindex`,
+ * the `-wired` stamp) are untouched by this and still mismatch. React warns
+ * about those in development and never patches them, so they cost noise in `next
+ * dev` and nothing in production. Fixing them means moving the visibility flips
+ * to a stylesheet keyed off `document.documentElement` — the one node React
+ * never owns — which is a larger change than this one and not a correctness fix.
+ */
+const EMPTY_HTML = { __html: "" };
+
 function renderPuzzle(
   seconds: number | undefined,
   blockId: string,
@@ -1839,6 +1871,7 @@ function renderPuzzle(
         aria-atomic="true"
         className={`${attr}-alt-status`}
         {...({ [`${attr}-status`]: "" } as Record<string, string>)}
+        dangerouslySetInnerHTML={EMPTY_HTML}
       />
       {/*
         `aria-live` on the OUTPUT, not just on the status line. Moving focus
@@ -1865,6 +1898,7 @@ function renderPuzzle(
         style={reveal === "hidden" ? { ...VISUALLY_HIDDEN, ...OFF } : OFF}
         className={`${attr}-alt-out`}
         {...({ [`${attr}-out`]: reveal } as Record<string, string>)}
+        dangerouslySetInnerHTML={EMPTY_HTML}
       />
       <script
         type="application/json"

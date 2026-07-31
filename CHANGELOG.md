@@ -6,6 +6,50 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1] — the solver stops fighting React hydration
+
+`@shieldfont/react` only. `@shieldfont/core` and `@shieldfont/font` are
+unchanged and stay at 0.3.0.
+
+### Fixed
+
+- **The puzzle control broke hydration for every returning reader.** The solver
+  script runs at parse time, by design — it has to work without React, without a
+  bundler, and on a static export. On a return visit it finds the reader's
+  plain text in `localStorage` and reveals it immediately, which meant writing
+  text into two elements React had server-rendered EMPTY: the live-region status
+  line and the output element. React hydrated moments later, found children it
+  had not rendered, and threw. Measured in a **production** React build against
+  the real emitted solver: four `#418` recoverable errors plus one `#423`, in
+  BOTH `reveal: "hidden"` (the default) and `reveal: "visible"`, where the whole
+  subtree is then discarded and client-rendered from scratch.
+
+  Both elements are now rendered with an empty `dangerouslySetInnerHTML`.
+  Nothing is injected — the payload is a constant empty string — and the point
+  is what it tells React: an element with `dangerouslySetInnerHTML` has no child
+  fibers, so React neither hydrates nor reconciles anything inside it and the
+  solver's writes stop being React's business. Same lesson the font-load guard
+  learned in 0.2: anything touching the DOM before hydration has to be invisible
+  to reconciliation. The guard's answer was a stylesheet; this one is an opaque
+  container. Verified as zero recoverable errors in the same probe.
+
+  No markup shape changed, no API changed, and the `localStorage` key is
+  untouched — cached unlocks survive the upgrade.
+
+### Known, and not fixed here
+
+- **Attribute writes still mismatch in development.** The solver flips `hidden`,
+  inline `display` and `tabindex`, and stamps `-solve-wired` on the button,
+  before React arrives. React warns about attribute mismatches in `next dev` and
+  never patches them, so this is noise in development and nothing in production.
+  Fixing it means moving the visibility flips to a stylesheet keyed off
+  `document.documentElement` — the one node React never owns — which is a real
+  change rather than a two-prop one, and is not a correctness fix.
+- **The plain-text cache persists across reloads**, so a block a reader has
+  unlocked renders as plain text on every later visit in that browser. Intended
+  on a real site; on a demo or preview page it deletes the demonstration. The
+  key is the `attrName` prefix plus the first 40 characters of the ciphertext.
+
 ## [0.3.0] — the accessible alternative, and a pre-release audit
 
 A plain-text accessible alternative that a scraper cannot read for free. The
