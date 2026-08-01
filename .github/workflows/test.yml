@@ -45,6 +45,16 @@ jobs:
           TMPDIR: /tmp
         run: npm run test:a11y
 
+      # The solver races hydration by design, and the unit suite cannot see the
+      # outcome: every one of those tests passed identically on the build that
+      # threw four #418s at every returning reader. Same browser, so it costs
+      # one more minute on the run that already installed Chromium.
+      - name: Hydration audit
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        env:
+          TMPDIR: /tmp
+        run: npm run test:hydration
+
   fonts:
     # Gate on the shipped font binaries, not just the TS. A composite whose
     # hmtx left side bearing disagrees with its xMin renders with the last

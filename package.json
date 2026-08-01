@@ -12,7 +12,8 @@
     "build": "npm run -w @shieldfont/core build && npm run -w @shieldfont/react build",
     "test": "npm run -w @shieldfont/core test && npm run -w @shieldfont/react test",
     "generate-inter": "python3 scripts/generate_font.py --base-url https://raw.githubusercontent.com/rsms/inter/v4.1/fonts/ttf/Inter-Regular.ttf --cache-name Inter-Regular.ttf --name 'ShieldFont' --prefix shieldfont",
-    "test:a11y": "node scripts/a11y-audit.mjs"
+    "test:a11y": "node scripts/a11y-audit.mjs",
+    "test:hydration": "node scripts/hydration-audit.mjs"
   },
   "keywords": [
     "font",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@guidepup/virtual-screen-reader": "^0.32.1",
+    "esbuild": "^0.25.0",
     "playwright": "^1.49.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"

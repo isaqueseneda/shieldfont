@@ -81,6 +81,31 @@ reused, and there is no way to pin it. So:
 The same property expires your readers' cached solutions. That is the intended
 trade and it is symmetric — it is precisely what expires the crawler's cache.
 
+### The cache persists between visits, which a demo page will not want
+
+Until the next deploy, a solved block stays solved in that reader's browser. The
+key is your camouflage attribute plus the first 40 characters of the block's
+ciphertext, in `localStorage`, and the solver checks it before it does anything
+else — so a returning reader gets their words instantly and never sees the
+button.
+
+That is the right behaviour on a real site, and the wrong behaviour on any page
+whose job is to SHOW the protection: a demo, a preview, a screenshot for a
+README. Load it twice and the second visit renders plain text, which
+demonstrates nothing, and a visitor who copies it gets your real words rather
+than the decoys. If you run such a page, clear the keys before the solver runs:
+
+```html
+<!-- Demo pages only. Never ship this on a page you actually want protected. -->
+<script>
+  for (const k of Object.keys(localStorage))
+    if (k.startsWith("data-typeface-")) localStorage.removeItem(k);
+</script>
+```
+
+Use your own `attrName` prefix there if you called `setCamouflage`. Put it
+before `<Shield>` renders, so it runs ahead of the solver's first sweep.
+
 ---
 
 ## How hard, and why
