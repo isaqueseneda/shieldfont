@@ -265,15 +265,16 @@ try {
   check(state.clipped, "revealed text is clipped off-screen, not removed");
   check(state.encodedStillVisible, "the encoded block stays on screen (hidden reveal)");
 
-  // ---- SECOND PASS: THE FULL TIER, which is what a bare <Shield> renders ----
+  // ---- SECOND PASS: THE DRAWN WRAPPER, which a bare <Shield> renders -------
   //
-  // Everything above audits INVISIBLE. FULL is the default since 0.3.2 and
-  // nothing had ever driven a screen reader over it — the tier most consumers
-  // get was the one tier with no spoken-output test. Its markup is different in
-  // kind, not degree: a drawn strip, a visible sentence that is also a focus
-  // stop, a Copy button beside the Uncover one, and a live region that reports
-  // progress. Every one of those is a chance to say something twice.
-  console.log("\n=== FULL tier: what a screen reader says ===");
+  // Everything above audits `wrapper: false`, the clipped off-screen control.
+  // The wrapper is the default since 0.3.2 and nothing had ever driven a screen
+  // reader over it — the configuration most consumers get was the one with no
+  // spoken-output test. Its markup is different in kind, not degree: a drawn
+  // strip, a visible sentence that is also a focus stop, a Copy button beside
+  // the Uncover one, and a live region that reports progress. Every one of
+  // those is a chance to say something twice.
+  console.log("\n=== wrapper drawn: what a screen reader says ===");
   await page.goto(origin + "/full");
   await page.evaluate(async () => {
     const m = await import("/vsr.js");
@@ -295,44 +296,44 @@ try {
 
   check(
     !fullSpoken.some((p) => DECOY_MARKERS.some((d) => p.includes(d))),
-    "FULL: the decoy is never spoken",
+    "wrapper: the decoy is never spoken",
   );
   // The sentence is drawn on screen AND is its own focus stop with an explicit
   // aria-label. A visible sentence that is also a note is the arrangement that
   // took four attempts to get right — aria-label on the group (skipped),
   // aria-describedby (suppressed at default verbosity), a focusable note with
   // no name (role="note" is name-from-author-only, so it had none).
-  // Spoken at all, and reached as a note. On this tier the sentence is drawn on
-  // screen and is a `role="note"` WITH CHILDREN, so a reader walks into it and
-  // hears the text as content; on the clipped tier it is a leaf with an
+  // Spoken at all, and reached as a note. With the wrapper drawn the sentence
+  // is on screen and is a `role="note"` WITH CHILDREN, so a reader walks into
+  // it and hears the text as content; clipped, it is a leaf with an
   // aria-label and comes out as `note, <text>`. Both are heard, which is what
   // this checks — the shape of the announcement is not the point, the four
   // earlier attempts that were silent are.
   const explained = fullSpoken.filter((p) => /screen reader, custom font/.test(p));
-  check(explained.length >= 1, "FULL: the explanation is spoken");
+  check(explained.length >= 1, "wrapper: the explanation is spoken");
   check(
     fullSpoken.some((p, i) => /^note$/.test(p.trim()) && /screen reader/.test(fullSpoken[i + 1] || "")),
-    "FULL: and it is reached as a note, not as loose text",
+    "wrapper: and it is reached as a note, not as loose text",
   );
   // ONCE PER PAGE, NOT ONCE PER BLOCK. This was a `note:` the audit printed and
-  // did not fail on — the drawn tier repeated the full sentence on every strip
-  // where the clipped tier had shortened after the first block since 0.3.0. It
-  // is an assertion now that both tiers do it. The VISIBLE text is still the
-  // full sentence on every block; only the spoken name shortens.
+  // did not fail on — the drawn wrapper repeated the full sentence on every
+  // strip where the clipped control had shortened after the first block since
+  // 0.3.0. It is an assertion now that both do it. The VISIBLE text is still
+  // the full sentence on every block; only the spoken name shortens.
   check(
     explained.length === 1,
-    "FULL: the long sentence is spoken once per page, not once per block",
+    "wrapper: the long sentence is spoken once per page, not once per block",
     `${explained.length}x`,
   );
   // Both controls named, and the names differ — here they SHOULD, because Copy
   // and Uncover do different things to the same block.
   const acts = fullSpoken.filter((p) => /^button,/.test(p.trim()));
-  check(acts.some((p) => /Uncover/.test(p)), "FULL: the uncover button is named");
-  check(acts.some((p) => /Copy/.test(p)), "FULL: the copy button is named");
-  // NOT "no group scaffolding". The clipped tier had its group role removed
+  check(acts.some((p) => /Uncover/.test(p)), "wrapper: the uncover button is named");
+  check(acts.some((p) => /Copy/.test(p)), "wrapper: the copy button is named");
+  // NOT "no group scaffolding". The clipped control had its group role removed
   // because it wrapped a sentence and a button and bought a listener nothing;
-  // this tier is a drawn box around a whole paragraph and two strips, where the
-  // boundary is the only way to tell one block's bottom strip from the next
+  // the wrapper is a drawn box around a whole paragraph and two strips, where
+  // the boundary is the only way to tell one block's bottom strip from the next
   // block's top strip. Shield.tsx argues both, at length, and both are right.
   // What matters here is that the group is NAMED and that no two sound alike.
   // UNNAMED, and that is the point. The boundary is what separates one block's
@@ -340,10 +341,10 @@ try {
   // sentence that immediately follows it, and cost twelve words per block to
   // say so. An unnamed group is still announced.
   const groups = fullSpoken.filter((p) => /^group\b/.test(p.trim()));
-  check(groups.length === 2, "FULL: each block is its own group", `${groups.length}`);
+  check(groups.length === 2, "wrapper: each block is its own group", `${groups.length}`);
   check(
     groups.every((g) => g.trim() === "group"),
-    "FULL: and the group is unnamed, so it pre-empts nothing",
+    "wrapper: and the group is unnamed, so it pre-empts nothing",
     groups.join(" | "),
   );
   // The group name is the IDENTIFIER, deliberately: the disclaimer is already
@@ -352,15 +353,133 @@ try {
   // above role="group" in Shield.tsx finally agree.
   check(
     groups.every((g) => !/screen reader, custom font/.test(g)),
-    "FULL: the group name is a boundary, not a second copy of the sentence",
+    "wrapper: the group name is a boundary, not a second copy of the sentence",
   );
-  check(!fullSpoken.some((p) => /^status$/i.test(p.trim())), "FULL: no bare 'status' announcement");
+  check(!fullSpoken.some((p) => /^status$/i.test(p.trim())), "wrapper: no bare 'status' announcement");
   // The progress bar is aria-hidden on purpose: NVDA ships "Progress bar
   // output: Beep" ON and the solver drives ~200 updates across the wait.
   check(
     !fullSpoken.some((p) => /progress ?bar/i.test(p)),
-    "FULL: the progress bar is out of the accessibility tree",
+    "wrapper: the progress bar is out of the accessibility tree",
   );
+
+  // ---- THIRD PASS: WHO SPEAKS AFTER ONE PRESS ----
+  //
+  // The regression this exists for. One press uncovers every block on the page,
+  // and every output used to be its own polite live region — so pressing one
+  // button read the whole article aloud, out of order, in whatever sequence the
+  // puzzles finished. A correct per-block decision, made stale by the later
+  // page-wide-unlock decision, with nothing wrong at either site.
+  //
+  // Liveness now belongs to the pressed block alone. This asserts the property
+  // directly rather than through spoken output, because "how many regions will
+  // speak" is the actual invariant and reading it off a transcript would make
+  // the test a race.
+  for (const [path, label, want] of [["/full", "wrapper", 2], ["/", "clipped", 4]]) {
+    const pg = await browser.newPage();
+    await pg.goto(origin + path, { waitUntil: "networkidle" });
+    await pg
+      .locator("button")
+      .filter({ hasText: /uncover/i })
+      .first()
+      // Dispatched, not clicked: without the wrapper the control is
+      // deliberately clipped to 1px off-screen and a pointer click lands on the
+      // paragraph.
+      .evaluate((el) => el.click());
+    await pg.waitForFunction((w) => document.body.innerText.includes(w), BLOCKS[1].text, {
+      timeout: 120_000,
+    });
+    // Every block finishes its own puzzle; give the slowest one room to land
+    // before counting, or this measures how far the broadcast got, not the design.
+    await pg.waitForFunction(
+      (n) => document.querySelectorAll("[data-typeface-out]").length === n &&
+             [...document.querySelectorAll("[data-typeface-out]")].every((e) => e.textContent.trim()),
+      want, { timeout: 120_000 },
+    ).catch(() => {});
+
+    const seen = await pg.$$eval("[data-typeface-out]", (els) => ({
+      filled: els.filter((e) => e.textContent.trim()).length,
+      speaking: els.filter((e) => e.getAttribute("aria-live") === "polite" && e.textContent.trim())
+        .length,
+      tabbable: els.filter((e) => e.getAttribute("tabindex") === "0").length,
+    }));
+    check(seen.filled === want, `${label}: one press uncovers every block`, `${seen.filled}/${want}`);
+    check(
+      seen.speaking === 1,
+      `${label}: but only the pressed block is announced`,
+      `${seen.speaking} of ${seen.filled} speak`,
+    );
+    check(
+      seen.tabbable === want,
+      `${label}: the silent ones stay reachable as Tab stops`,
+      `${seen.tabbable}/${want}`,
+    );
+    await pg.close();
+  }
+
+  // ---- FOURTH PASS: DOES THE WRAPPER SAY THE FONT IS MISSING? -------------
+  //
+  // The state that matters to EVERY reader, not only to assistive technology.
+  // When the face does not load there are no ligatures, so the decoy words —
+  // fluent, grammatical, wrong — are what everybody sees, with nothing on the
+  // page to say so. The strip's whole job in that moment is to say so.
+  //
+  // Nothing tested it, and it broke: a font-check cache that was meant to dedupe
+  // within one probe was kept BETWEEN probes, so the re-probe that runs when the
+  // failure is detected returned the previous, healthy answer. The guard logged
+  // the failure and the wrapper carried on telling readers the text was fine.
+  //
+  // Toggled off again at the end, because a signal that latches on is only half
+  // a signal — and a stuck skeleton would hide readable text.
+  {
+    const pg = await browser.newPage();
+    await pg.goto(origin + "/full", { waitUntil: "networkidle" });
+    const stem = "data-typeface";
+    const state = () =>
+      pg.evaluate((s) => {
+        const frame = document.querySelector(`[${s}-frame]`);
+        const say = frame && frame.querySelector(`[${s}-say-full]`);
+        const block = frame && frame.querySelector(`[${s}-block]`);
+        return {
+          sentence: say ? say.textContent.trim() : "",
+          failed: !!(frame && frame.hasAttribute(`${s}-failed`)),
+          skeleton: !!(block && block.hasAttribute(`${s}-skeleton`)),
+        };
+      }, stem);
+    const settle = (want) =>
+      pg
+        .waitForFunction(
+          ([s, want]) =>
+            !!document.querySelector(`[${s}-frame]`).hasAttribute(`${s}-failed`) === want,
+          [stem, want],
+          { timeout: 15_000 },
+        )
+        .catch(() => {});
+
+    await settle(false);
+    const healthy = await state();
+    check(!healthy.failed && !healthy.skeleton, "font healthy: nothing is flagged broken");
+
+    await pg.evaluate((s) => document.documentElement.setAttribute(`${s}-simulate-fail`, ""), stem);
+    await settle(true);
+    const broken = await state();
+    check(broken.failed, "font missing: the frame is flagged");
+    check(broken.skeleton, "font missing: the decoy words are covered by the skeleton");
+    check(
+      broken.sentence !== healthy.sentence && /showing correctly|isn.t showing/i.test(broken.sentence),
+      "font missing: the strip SAYS the text is wrong",
+      broken.sentence.slice(0, 52),
+    );
+
+    await pg.evaluate((s) => document.documentElement.removeAttribute(`${s}-simulate-fail`), stem);
+    await settle(false);
+    const back = await state();
+    check(
+      !back.failed && !back.skeleton && back.sentence === healthy.sentence,
+      "font restored: the wrapper goes back to normal",
+    );
+    await pg.close();
+  }
 
   check(pageErrors.length === 0, "no page errors", pageErrors.join("; ") || "none");
 } finally {

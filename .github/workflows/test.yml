@@ -55,6 +55,32 @@ jobs:
           TMPDIR: /tmp
         run: npm run test:hydration
 
+      # axe-core over both tiers, before AND after the unlock. Added because the
+      # docs claimed three of the four tiers "pass WCAG 2.2" while ROADMAP.md
+      # said in the same repository that no axe scan had ever been run. It
+      # settles the machine-checkable third of WCAG — contrast and accessible
+      # names, both of which were guesses — and nothing beyond it. A clean run
+      # here is NOT conformance and no document may cite it as such.
+      - name: axe scan
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        env:
+          TMPDIR: /tmp
+        run: npm run test:axe
+
+      # The wrapper inside seventeen hostile host pages, measured rather than
+      # looked at. axe above scans OUR page, where our stylesheet is the only
+      # one; this scans pages that also carry Tailwind Preflight, a `*` reset,
+      # `button { all: unset }`, forced-colors, a 10px root and a hand-rolled
+      # dark theme — which is where the component actually lives and where the
+      # bug that started it ("in dark mode the Uncover button gets all fucked")
+      # was invisible to every check we had. Same browser again, so it costs
+      # about a minute on the run that already installed Chromium.
+      - name: Host-stylesheet audit
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        env:
+          TMPDIR: /tmp
+        run: npm run test:style
+
   # ---- REAL NVDA -----------------------------------------------------------
   #
   # Not a simulator. Guidepup installs NVDA and drives it over NVDA's own Remote

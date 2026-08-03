@@ -96,13 +96,13 @@ async function walk(steps) {
 try {
   await nvda.start();
 
-  // ---- The drawn tier, which is what a bare <Shield> renders ---------------
+  // ---- The drawn wrapper, which is what a bare <Shield> renders -----------
   await page.goto(origin + "/full");
   await page.bringToFront();
   await nvda.clearSpokenPhraseLog();
 
   const spoken = await walk(24);
-  console.log("\n=== NVDA, drawn tier, top to bottom ===");
+  console.log("\n=== NVDA, wrapper drawn, top to bottom ===");
   spoken.forEach((p) => console.log("   · " + p));
   const all = spoken.join(" | ").toLowerCase();
 
@@ -146,6 +146,55 @@ try {
   //    only because of NVDA: "Progress bar output: Beep" is ON by default and
   //    the solver drives ~200 updates. Nothing else in this suite can see it.
   check(!all.includes("progress bar"), "the progress bar is out of the tree");
+
+  // ---- 5. WHAT ONE PRESS ACTUALLY READS ALOUD -----------------------------
+  //
+  // The check this audit was missing, and the reason it exists at all.
+  //
+  // One press uncovers EVERY block on the page, and every output used to be its
+  // own polite live region — so one press read the whole article aloud, out of
+  // order, in whatever sequence the puzzles finished. Liveness now belongs to
+  // the pressed block alone, granted by the script at press time.
+  //
+  // That design has to be verified HERE rather than by counting attributes,
+  // because "does a live region that gains aria-live moments before it is
+  // filled actually announce" is a question about NVDA's behaviour, not about
+  // the DOM. It is exactly the class of question this whole harness exists for,
+  // and the project holds every other announcement decision to the same bar.
+  await nvda.clearSpokenPhraseLog();
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((e) =>
+      /uncover/i.test(e.textContent || ""),
+    );
+    if (b) b.click();
+  });
+  // Wait for the words, not for a timer: a sleep long enough to be safe on a
+  // Windows runner is wasted locally, and one tuned locally makes CI flake.
+  await page
+    .waitForFunction((want) => document.body.innerText.includes(want), BLOCKS[1].text, {
+      timeout: 180_000,
+    })
+    .catch(() => {});
+  // Both blocks land, then NVDA needs a moment to voice whatever it is going to
+  // voice. This is the one place a fixed pause is honest: we are measuring
+  // whether speech happens, so there is no DOM condition to wait for.
+  await page.waitForTimeout(4000);
+
+  const after = (await nvda.spokenPhraseLog()).join(" | ").toLowerCase();
+  console.log("\n=== NVDA, after one press ===");
+  after.split(" | ").forEach((p) => p && console.log("   · " + p));
+
+  const body = BLOCKS[1].text.toLowerCase();
+  const heading = BLOCKS[0].text.toLowerCase();
+  check(
+    after.includes(body.slice(0, 40)) || after.includes(heading.slice(0, 30)),
+    "the pressed block's real words are announced",
+  );
+  // The regression itself: the OTHER block filled too, and must have arrived in
+  // silence. If both are read, the chorus is back.
+  const spokeBoth =
+    after.includes(body.slice(0, 40)) && after.includes(heading.slice(0, 30));
+  check(!spokeBoth, "and the other block is NOT also read aloud");
 
   console.log(`\n${failures.length ? failures.length + " FAILED" : "All NVDA checks passed."}\n`);
 } finally {

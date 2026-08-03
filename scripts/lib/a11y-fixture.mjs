@@ -13,7 +13,7 @@
  *
  *   - `crypto.subtle` exists only in a secure context, and localhost is one.
  *     The whole mode depends on it.
- *   - The tiers draw themselves from an emitted <script> that wires at
+ *   - Both fixtures draw themselves from an emitted <script> that wires at
  *     DOMContentLoaded. `page.setContent()` does not give it one, so an audit
  *     built that way walks the PREVIOUS page and reports missing buttons that
  *     were never rendered.
@@ -71,7 +71,7 @@ export const DECOY_MARKERS = ["derives", "primer", "keep it"];
 const page = (title, body) =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
 
-/** All four blocks at the INVISIBLE tier — the clipped control. */
+/** All four blocks with `wrapper: false` — the clipped off-screen control. */
 export const clippedHtml = page(
   "audit",
   withShieldRenderPass(() =>
@@ -82,14 +82,14 @@ export const clippedHtml = page(
         h("h1", null, "Audit page"),
         h("p", null, "Ordinary text, for contrast."),
         ...BLOCKS.map((b) =>
-          h(Shield, { as: b.as, a11y: A11Y, explain: false, children: b.text }),
+          h(Shield, { as: b.as, a11y: A11Y, wrapper: false, children: b.text }),
         ),
       ),
     ),
   ),
 );
 
-/** Two blocks at the FULL tier — the drawn wrapper, and the default. */
+/** Two blocks with the wrapper drawn, which is what a bare <Shield> renders. */
 export const drawnHtml = page(
   "audit full",
   withShieldRenderPass(() =>

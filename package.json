@@ -1,6 +1,6 @@
 {
   "name": "shieldfont-monorepo",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "private": true,
   "description": "ShieldFont packages \u2014 encoding pipeline for the AI-scraping-resistant web font",
   "workspaces": [
@@ -14,7 +14,9 @@
     "generate-inter": "python3 scripts/generate_font.py --base-url https://raw.githubusercontent.com/rsms/inter/v4.1/fonts/ttf/Inter-Regular.ttf --cache-name Inter-Regular.ttf --name 'ShieldFont' --prefix shieldfont",
     "test:a11y": "node scripts/a11y-audit.mjs",
     "test:hydration": "node scripts/hydration-audit.mjs",
-    "test:a11y:nvda": "node scripts/nvda-audit.mjs"
+    "test:a11y:nvda": "node scripts/nvda-audit.mjs",
+    "test:axe": "node scripts/axe-audit.mjs",
+    "test:style": "node scripts/style-audit.mjs"
   },
   "keywords": [
     "font",
@@ -34,6 +36,7 @@
   "devDependencies": {
     "@guidepup/guidepup": "^0.31.0",
     "@guidepup/virtual-screen-reader": "^0.32.1",
+    "axe-core": "^4.12.1",
     "esbuild": "^0.25.0",
     "playwright": "^1.49.0",
     "react": "^18.3.0",

@@ -103,12 +103,12 @@ if (document.readyState !== "complete") {
 
 const el = React.createElement(
   Shield,
-  // explain:false — the INVISIBLE tier, which is what this audit is about.
-  // The race it exercises is the SOLVER's: cached text written into the DOM
-  // before hydrateRoot runs. Since 0.3.2 a bare <Shield> draws the FULL
+  // wrapper:false — the clipped off-screen control, which is what this audit
+  // is about. The race it exercises is the SOLVER's: cached text written into
+  // the DOM before hydrateRoot runs. Since 0.3.2 a bare <Shield> draws the
   // wrapper, whose browser half is a different script with a different reveal
   // path, so the fixture quietly stopped rendering the thing under test.
-  { as: "p", explain: false, a11y: { mode: "text", seconds: 5, reveal: window.__REVEAL__ } },
+  { as: "p", wrapper: false, a11y: { mode: "text", seconds: 5, reveal: window.__REVEAL__ } },
   ${JSON.stringify(TEXT)},
 );
 
