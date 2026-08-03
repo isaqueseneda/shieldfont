@@ -30,7 +30,7 @@ import type { Mapping } from "./types.js";
  * To learn which dictionary generation you are running, call
  * `mappingMeta(mapping)`. Do not infer it from VERSION.
  */
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.2";
 
 export { encode, decode, encodeSegments } from "./encode.js";
 export { encodeHtml, decodeHtml } from "./html.js";

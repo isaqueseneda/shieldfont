@@ -21,7 +21,7 @@
  *
  * The goal is NOT to make the plaintext expensive in absolute terms. It cannot
  * be: a crawler that wants the words can always render the page and OCR the
- * pixels, which costs roughly three seconds of server CPU per page and is
+ * pixels, which costs ~5.0 CPU-seconds for a real article page and is
  * available whether or not this module exists. OCR is the floor on ShieldFont's
  * protection and no amount of cryptography raises it.
  *
@@ -54,7 +54,8 @@
  *     e = 2^T mod φ(n)      then      K = 2^e mod n
  *
  * Two modular exponentiations, about a millisecond. Measured on this repo's
- * reference machine: **62 ms to seal a block that costs 20 seconds to open.**
+ * reference machine: **62 ms to seal a block that costs the reader a 14-second
+ * budget to open.**
  * p, q and φ(n) are discarded and never leave this function — with them the
  * puzzle would be trivially bypassable, so nothing may retain them.
  *
@@ -81,12 +82,9 @@ import {
 } from "node:crypto";
 
 /**
- * Squarings per second on the reference device — a mid-range laptop running
- * Chrome, which is what `seconds` in {@link SealOptions} is denominated in.
- *
- * Measured at ~269k/s for a 2048-bit modulus in V8 (`node v24`, Apple Silicon).
- * Rounded DOWN to 250k so the shipped estimate errs toward finishing early
- * rather than late: a progress bar that beats its promise is a good surprise,
+ * Squarings per second on the reference device — a mid-range phone, or Safari,
+ * which is what `seconds` in {@link SealOptions} is denominated in. Deliberately
+ * NOT a fast desktop: a progress bar that beats its promise is a good surprise,
  * one that overruns reads as broken.
  *
  * This constant only converts seconds to a step count at build time. It is not
@@ -127,8 +125,8 @@ const MODULUS_BITS = 2048;
 const PRIME_BITS = MODULUS_BITS / 2;
 
 /**
- * Default target, in seconds on the reference device — 12 × 120,000 = 1,400,000
- * steps, near enough.
+ * Default target, in seconds on the reference device — 14 × 120,000 = 1,680,000
+ * steps.
  *
  * THIS WAS 20 SECONDS AGAINST A REFERENCE OF 250,000, i.e. 5,000,000 steps, and
  * the reasoning above it was wrong in three places at once. It put OCR at ~3
@@ -152,13 +150,28 @@ const PRIME_BITS = MODULUS_BITS / 2;
  * seconds are paid entirely by disabled readers.
  *
  *   budget/block = 5.0 CPU-s ÷ 5 blocks           = 1.00 CPU-s
- *   t            = 0.8 × 1.00 × 1,737,000         ≈ 1,400,000
- *   crawler pays = 1,400,000 ÷ 1,737,000          = 0.81 CPU-s per block
- *                = 81% of the OCR floor ✓
+ *   t            = 0.97 × 1.00 × 1,737,000        ≈ 1,680,000
+ *   crawler pays = 1,680,000 ÷ 1,737,000          = 0.97 CPU-s per block
+ *                = 97% of the OCR floor ✓
  *
- * Reader-side, that is ~5.4 s on V8 and ~11.7 s on the 120,000 reference. Both
- * numbers are honest ranges: a real reader may be 2-4x either way, which is why
- * the solver measures the device rather than trusting this.
+ * ## Why 97% and not the 81% this shipped with first
+ *
+ * 81% left a fifth of the available deterrence unclaimed for no reason. The
+ * crawler picks the CHEAPER door, so the whole game is to sit as close under the
+ * OCR floor as the measurement error allows:
+ *
+ *   - below the floor, the puzzle is the cheaper door, so they pay it;
+ *   - above the floor, they OCR instead and every extra second is paid purely by
+ *     disabled readers, buying nothing.
+ *
+ * So the target is "just under", not "comfortably under". 97% keeps the puzzle
+ * the cheaper door while claiming essentially all of the budget. Deliberately
+ * not 100%: the 5.0 CPU-s OCR figure is a measurement, not a constant, and
+ * overshooting it is the one direction with no upside.
+ *
+ * Reader-side, that is ~6.5 s on V8 and ~14 s on the 120,000 reference. Both are
+ * honest ranges: a real reader may be 2-4x either way, which is why the solver
+ * measures the device rather than trusting this.
  *
  * NOTE THE DOLLARS CANCEL. A crawler OCRs and squares on the same rented CPU, so
  * $/vCPU-second appears on both sides of the comparison and drops out. The rule
@@ -167,12 +180,12 @@ const PRIME_BITS = MODULUS_BITS / 2;
  *
  * Going higher is still the tempting mistake, for the same reason as before.
  */
-export const DEFAULT_SECONDS = 12;
+export const DEFAULT_SECONDS = 14;
 
 /**
  * Floor. NOT "below this the puzzle is cheaper than OCR" — that was the old
- * comment and it is false: the OCR-matched point is ~12 reference-seconds, so a
- * floor of 5 forbade nothing useful and a floor above 12 would have forbidden
+ * comment and it is false: the OCR-matched point is ~14 reference-seconds, so a
+ * floor of 5 forbade nothing useful and a floor above 14 would have forbidden
  * the correct value. This is now just a sanity bound against a typo.
  */
 const MIN_SECONDS = 1;
@@ -181,7 +194,7 @@ const MIN_SECONDS = 1;
  * Hard ceiling. Not a security limit — a limit on how long it is defensible to
  * make somebody wait for words everyone else already has. Was 120, which is ten
  * times the OCR floor: two full minutes of a disabled reader's life buying
- * nothing a crawler would ever pay. 30 is already ~2.5x past the useful point.
+ * nothing a crawler would ever pay. 30 is already ~2x past the useful point.
  */
 const MAX_SECONDS = 30;
 
@@ -204,7 +217,7 @@ export interface SealOptions {
    * audience and wants to calibrate against that instead of against this
    * file's reference laptop.
    *
-   * It deliberately skips the 5..120 second guard, so it will happily build a
+   * It deliberately skips the 1..30 second guard, so it will happily build a
    * puzzle that a crawler solves instantly. If you are reaching for it to make
    * a page feel faster, use `seconds` and read {@link DEFAULT_SECONDS} first.
    */
@@ -229,7 +242,7 @@ export interface SealedText {
   ct: string;
 }
 
-/** `2^exp mod m`, square-and-multiply. ~log2(exp) steps, so ~23 for T = 5M. */
+/** `2^exp mod m`, square-and-multiply. ~log2(exp) steps, so ~21 for T = 1.68M. */
 function modPow(base: bigint, exp: bigint, m: bigint): bigint {
   let result = 1n;
   let b = base % m;
@@ -260,7 +273,7 @@ function canonical(x: bigint, modulusHexLength: number): string {
  * Encrypt `plaintext` behind a fresh time-lock puzzle.
  *
  * Fast — the trapdoor makes sealing independent of the target time, so a
- * 20-second puzzle and a 120-second puzzle both cost about 60 ms to build, and
+ * 1-second puzzle and a 30-second puzzle both cost about 60 ms to build, and
  * essentially all of that is prime generation.
  *
  * Call this at BUILD TIME, in Node, where the plaintext already lives. It is
@@ -270,7 +283,7 @@ function canonical(x: bigint, modulusHexLength: number): string {
  *
  * @example
  *   import { sealText } from "@shieldfont/core/puzzle";
- *   const sealed = sealText("The words a screen reader needs.", { seconds: 20 });
+ *   const sealed = sealText("The words a screen reader needs.", { seconds: 14 });
  */
 export function sealText(plaintext: string, opts: SealOptions = {}): SealedText {
   if (typeof plaintext !== "string") {
