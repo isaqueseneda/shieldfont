@@ -1,5 +1,7 @@
 import { encode, alpha, beta, gamma, m15en } from "@shieldfont/core";
+import type { Mapping } from "@shieldfont/core";
 import { DEFAULT_SECONDS, sealText } from "@shieldfont/core/puzzle";
+import { sealWithDecoys } from "./decoys.js";
 import * as React from "react";
 import { solverScript } from "./solver.js";
 import {
@@ -1852,6 +1854,7 @@ function renderA11y(
   a11y: ShieldA11y | undefined,
   inline: boolean,
   plain: string,
+  mapping: Mapping,
   blockId: string,
   tag: string | null,
   ordinal: number,
@@ -1939,6 +1942,7 @@ function renderA11y(
         a11y.seconds,
         blockId,
         plain,
+        mapping,
         inline,
         tag,
         a11y.reveal ?? "hidden",
@@ -2478,6 +2482,7 @@ function renderPuzzle(
   seconds: number | undefined,
   blockId: string,
   plain: string,
+  mapping: Mapping,
   inline: boolean,
   tag: string | null,
   reveal: "hidden" | "visible",
@@ -2488,7 +2493,10 @@ function renderPuzzle(
   const solveAttr = `${attr}-solve`;
   const Note = (inline ? "span" : "p") as ElementType;
   const target = seconds ?? DEFAULT_SECONDS;
-  const sealed = sealText(plain, { seconds: target });
+  // Same arrangement as the drawn tier — see decoys.ts. `blockId` is the
+  // position marker and must match what the emitted solver derives, or the
+  // browser grinds a decoy and fails to decrypt with nothing useful to say.
+  const sealed = sealWithDecoys(plain, mapping, target, camo.attrName, blockId);
 
   // The revealed words go into the SAME element type the shield itself uses, so
   // <Shield as="h2"> reveals into an <h2>. Without this the output was always a
@@ -2616,7 +2624,10 @@ function renderPuzzle(
       <script
         type="application/json"
         {...({ [`${attr}-data`]: "" } as Record<string, string>)}
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(sealed).replace(/</g, "\\u003c") }}
+        // An ARRAY, same as the drawn tier — see decoys.ts.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(sealed.payloads).replace(/</g, "\\u003c"),
+        }}
       />
     </>
   );
@@ -2995,6 +3006,7 @@ export function Shield(props: ShieldProps) {
         effectiveA11y,
         typeof Tag === "string" && INLINE_TAGS.has(Tag),
         children,
+        mapping,
         blockId,
         typeof Tag === "string" ? Tag : null,
         ordinal,
@@ -3038,8 +3050,23 @@ export function Shield(props: ShieldProps) {
   // Sealed HERE for the notice path, rather than inside renderA11y, because the
   // frame owns the payload now. Same call, same guarantee: plaintext goes in,
   // ciphertext comes out, and only the ciphertext reaches the JSX.
+  // SEALED AMONG DECOYS. Four payloads ship where one used to; the browser is
+  // told which is the block's own and grinds exactly that one, so the reader
+  // waits no longer than before. See decoys.ts for what this buys and — more
+  // importantly — for the version of it that is broken (the same text under
+  // three mappings, which a majority vote cracks).
+  //
+  // Seeded on the camouflage attribute, which is per project: two sites must
+  // not draw the same decoys, or one afternoon's work yields a list of known
+  // decoy ciphertexts good against everybody.
   const sealed = wantsNotice
-    ? sealText(children, { seconds: srSeconds ?? DEFAULT_SECONDS })
+    ? sealWithDecoys(
+        children,
+        mapping,
+        srSeconds ?? DEFAULT_SECONDS,
+        camo.attrName,
+        blockId,
+      )
     : null;
 
   if (wantsNotice && cfg) {
@@ -3050,6 +3077,12 @@ export function Shield(props: ShieldProps) {
     const Out = (typeof Tag === "string" ? Tag : "p") as ElementType;
     const frameAttrs = {
       [`${attr}-frame`]: "",
+      // Which of the sealed payloads is this block's own — as a KEY, not an
+      // index. The emitted script derives the position from it the same way
+      // decoys.ts did at build time. A hash, so it adds no English to the
+      // markup; the clipped tier has carried the same thing as `-solve-for`
+      // since 0.3.0.
+      [`${attr}-for`]: blockId,
       // `role="group"` WITH A NAME, on the frame — and yes, this file argues a
       // hundred lines up for having taken `role="group"` off the OLD clipped
       // wrapper. Both are right, because they are not the same element.
@@ -3270,7 +3303,11 @@ export function Shield(props: ShieldProps) {
             type="application/json"
             {...({ [`${attr}-data`]: "" } as Record<string, string>)}
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(sealed).replace(/</g, "\\u003c"),
+              // An ARRAY now, not one object. Four payloads, one of them the
+              // block's own; the emitted script derives which from the block id
+              // rather than being told in an attribute, so an attacker has to
+              // read the script instead of grepping for a marker.
+              __html: JSON.stringify(sealed!.payloads).replace(/</g, "\\u003c"),
             }}
           />
           {cfg.position === "both" ? (

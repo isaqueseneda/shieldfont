@@ -237,6 +237,11 @@ function open(hex, data, hexLen){
     })
     .then(function(buf){ return new TextDecoder().decode(buf); });
 }
+function pick(list, key){
+  var h = 5381, i;
+  for (i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  return list[h % list.length];
+}
 function wire(btn){
   if (btn.getAttribute(SOLVE + '-wired')) return;
   var wrap = btn.closest('[' + ATTR + '-group]');
@@ -249,7 +254,10 @@ function wire(btn){
   btn.setAttribute(SOLVE + '-wired', '1');
   function targetBlock(){ return document.getElementById(btn.getAttribute(SOLVE + '-for')); }
   var data;
-  try { data = JSON.parse(holder.textContent); }
+  try {
+    var all = JSON.parse(holder.textContent);
+    data = all.length ? pick(all, btn.getAttribute(SOLVE + '-for') || '') : all;
+  }
   catch (err) { console.error(PFX + ' sealed payload is not valid JSON.', err); return; }
   var storeKey = STORE + data.ct.slice(0, 40);
   function reveal(plain, cached){

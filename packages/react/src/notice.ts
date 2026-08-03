@@ -851,6 +851,11 @@ function task(d, onEst, onProg){
     }
   });
 }
+function pick(list, key){
+  var h = 5381, i;
+  for (i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  return list[h % list.length];
+}
 function Frame(root){
   var self = this;
   this.root = root;
@@ -860,7 +865,10 @@ function Frame(root){
   this.out = root.querySelector('[' + A + '-out]');
   this.status = root.querySelector('[' + A + '-status]');
   var holder = root.querySelector('[' + A + '-data]');
-  try { this.data = JSON.parse(holder.textContent); }
+  try {
+    var all = JSON.parse(holder.textContent);
+    this.data = all.length ? pick(all, root.getAttribute(A + '-for') || '') : all;
+  }
   catch (e) { console.error(PFX + ' sealed payload is not valid JSON.', e); this.data = null; }
   this.key = this.data ? STORE + this.data.ct.slice(0, 40) : null;
   try { this.says = JSON.parse(root.getAttribute(A + '-says') || '{}'); }

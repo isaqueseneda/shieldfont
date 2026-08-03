@@ -118,7 +118,16 @@ root.innerHTML = renderToStaticMarkup(el);
 // Arrive as a reader who unlocked this block on an earlier visit: the solver
 // derives its key from the camouflage attribute plus the first 40 characters
 // of the ciphertext.
-const data = JSON.parse(root.querySelector('script[type="application/json"]').textContent);
+// AN ARRAY SINCE 0.3.2 — the real payload rides among decoys. The cache key is
+// derived from the block's OWN ciphertext, so this has to pick the same one the
+// emitted solver will, by the same rule (djb2 over the block key, mod length).
+// Taking [0] would pass here only because the stub below makes all four
+// identical, and would then hide a real mismatch the day it stopped.
+const payloads = JSON.parse(root.querySelector('script[type="application/json"]').textContent);
+const key = root.querySelector("[data-typeface-solve]").getAttribute("data-typeface-solve-for") || "";
+let hh = 5381;
+for (let i = 0; i < key.length; i++) hh = ((hh << 5) + hh + key.charCodeAt(i)) >>> 0;
+const data = Array.isArray(payloads) ? payloads[hh % payloads.length] : payloads;
 localStorage.setItem("data-typeface-" + data.ct.slice(0, 40), ${JSON.stringify("__ANSWER__")});
 
 // The real emitted solver, run at the moment a parser would reach it.

@@ -100,9 +100,15 @@ describe("sealText", () => {
     expect(a.iv).not.toBe(b.iv);
   });
 
-  it("rejects a difficulty below the OCR floor or above the patience ceiling", () => {
-    expect(() => sealText(SECRET, { seconds: 4 })).toThrow(RangeError);
-    expect(() => sealText(SECRET, { seconds: 121 })).toThrow(RangeError);
+  it("rejects a difficulty outside the sane band", () => {
+    // The band moved in 0.3.2 when the default was recalibrated against a
+    // MEASURED OCR cost rather than an estimated one: 1..30 rather than 5..120.
+    // The old floor of 5 came with a comment claiming anything lower was
+    // "cheaper than OCR" — false, and it would now forbid values close to the
+    // correct one. The old ceiling of 120 was two minutes of a disabled
+    // reader's life buying nothing a crawler would ever pay for.
+    expect(() => sealText(SECRET, { seconds: 0 })).toThrow(RangeError);
+    expect(() => sealText(SECRET, { seconds: 31 })).toThrow(RangeError);
     expect(() => sealText(SECRET, { seconds: NaN })).toThrow(RangeError);
     // The message has to explain the ceiling, or someone will "harden" a page
     // by raising it and buy nothing for the wait they inflicted.

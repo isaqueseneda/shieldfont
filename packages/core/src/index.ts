@@ -37,6 +37,11 @@ export { encodeHtml, decodeHtml } from "./html.js";
 export { buildHtml, shipHtml, checkHtml, assertShipped } from "./markers.js";
 export type { CheckResult } from "./markers.js";
 export { loadMappingFromString, parseMappingId, mappingMeta } from "./mapping.js";
+// Build-time only — the corpus the decoy payloads are drawn from. It never
+// reaches a browser; what ships is sealed ciphertext, the same size whatever
+// text went into it. See decoy-corpus.ts for why it is Austen and why it must
+// be run through the encoder before it is sealed.
+export { DECOY_CORPUS, decoyParagraphs } from "./decoy-corpus.js";
 export type { Mapping, MappingId, Segment } from "./types.js";
 
 // Bundled mapping variants (JSON-imported constants). Each corresponds to a

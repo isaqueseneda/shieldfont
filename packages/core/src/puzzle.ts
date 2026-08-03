@@ -95,8 +95,18 @@ import {
  * does NOT trust this number — it benchmarks the actual device before it starts
  * and reports an estimate based on what it measured. See the solver script in
  * @shieldfont/react.
+ *
+ * IT WAS 250,000 AND THE COMMENT CALLED THAT "a deliberately slow reference
+ * device". It was not. Measured 2026-08: V8 BigInt on an Apple M1 Max does
+ * 259,500 squarings/s, so the old number was 96% of one of the fastest consumer
+ * cores in existence, described as a slow one. Every author who reasoned from it
+ * was told their readers would wait N seconds and their readers waited longer.
+ *
+ * 120,000 is an honest median — a mid-range phone, or Safari, which trails V8.
+ * The number moved DOWN, so the same `seconds` now buys fewer steps: that is the
+ * correction, not a weakening.
  */
-export const REFERENCE_SQUARINGS_PER_SECOND = 250_000;
+export const REFERENCE_SQUARINGS_PER_SECOND = 120_000;
 
 /**
  * Modulus size in bits. 2048 is the sweet spot and the choice is load-bearing
@@ -117,31 +127,63 @@ const MODULUS_BITS = 2048;
 const PRIME_BITS = MODULUS_BITS / 2;
 
 /**
- * Default target, in seconds on the reference device.
+ * Default target, in seconds on the reference device — 12 × 120,000 = 1,400,000
+ * steps, near enough.
  *
- * Twenty seconds is chosen against the OCR floor, not plucked. A crawler that
- * wants the words without touching this puzzle renders the page (~1 s of CPU)
- * and runs OCR over the pixels (~2 s), so the alternative path costs it roughly
- * **3 seconds of server CPU per page**. Server cores run maybe 3-4x a laptop on
- * this workload, so 20 reader-seconds is on the order of 5-7 crawler-seconds:
- * about double the OCR path, with margin for a fast core.
+ * THIS WAS 20 SECONDS AGAINST A REFERENCE OF 250,000, i.e. 5,000,000 steps, and
+ * the reasoning above it was wrong in three places at once. It put OCR at ~3
+ * CPU-seconds per page, assumed "server cores run 3-4x a laptop", and costed the
+ * puzzle per PAGE while the component seals per BLOCK. Measured 2026-08:
  *
- * Going higher is the tempting mistake. OCR does not get more expensive when
- * this number grows — a crawler simply takes the cheaper door — so difficulty
- * past the OCR floor buys **no additional protection whatsoever** and is paid
- * for entirely by disabled readers waiting longer. Twenty is roughly the top of
- * the useful range. Treat anything above 60 as a bug in someone's reasoning.
+ *   - Render + OCR is ~5.0 CPU-seconds for a real article page — Tesseract costs
+ *     ~2.7 ms per WORD (it tracks text volume, not pixels), a real page carries
+ *     ~750 words once nav, sidebar, comments and footer are counted, and a
+ *     measured 12% of pages need a retry.
+ *   - Server cores are NOT faster than a laptop on bignum work; they are equal
+ *     to slightly slower. The attacker's real advantage is software: OpenSSL's
+ *     hand-written Montgomery assembly does 1,737,000 squarings/s where V8's
+ *     BigInt does 259,500. That is a 6.7x gap, and it is not going away.
+ *   - Five blocks on a page meant five puzzles, so the old default billed a
+ *     crawler ~14 CPU-seconds against an OCR floor of 5. Ten times over.
+ *
+ * The rule this number obeys: **a block's puzzle should cost a crawler slightly
+ * LESS than its share of render+OCR.** OCR is always available, so anything
+ * dearer is not protection — the crawler takes the cheaper door and the extra
+ * seconds are paid entirely by disabled readers.
+ *
+ *   budget/block = 5.0 CPU-s ÷ 5 blocks           = 1.00 CPU-s
+ *   t            = 0.8 × 1.00 × 1,737,000         ≈ 1,400,000
+ *   crawler pays = 1,400,000 ÷ 1,737,000          = 0.81 CPU-s per block
+ *                = 81% of the OCR floor ✓
+ *
+ * Reader-side, that is ~5.4 s on V8 and ~11.7 s on the 120,000 reference. Both
+ * numbers are honest ranges: a real reader may be 2-4x either way, which is why
+ * the solver measures the device rather than trusting this.
+ *
+ * NOTE THE DOLLARS CANCEL. A crawler OCRs and squares on the same rented CPU, so
+ * $/vCPU-second appears on both sides of the comparison and drops out. The rule
+ * is CPU-seconds against CPU-seconds — which also makes it robust to spot-price
+ * swings and to hardware generations, since OCR and squaring speed up together.
+ *
+ * Going higher is still the tempting mistake, for the same reason as before.
  */
-export const DEFAULT_SECONDS = 20;
+export const DEFAULT_SECONDS = 12;
 
-/** Below this the puzzle is cheaper than OCR and stops being worth shipping. */
-const MIN_SECONDS = 5;
+/**
+ * Floor. NOT "below this the puzzle is cheaper than OCR" — that was the old
+ * comment and it is false: the OCR-matched point is ~12 reference-seconds, so a
+ * floor of 5 forbade nothing useful and a floor above 12 would have forbidden
+ * the correct value. This is now just a sanity bound against a typo.
+ */
+const MIN_SECONDS = 1;
 
 /**
  * Hard ceiling. Not a security limit — a limit on how long it is defensible to
- * make somebody wait for words everyone else already has.
+ * make somebody wait for words everyone else already has. Was 120, which is ten
+ * times the OCR floor: two full minutes of a disabled reader's life buying
+ * nothing a crawler would ever pay. 30 is already ~2.5x past the useful point.
  */
-const MAX_SECONDS = 120;
+const MAX_SECONDS = 30;
 
 /** Options for {@link sealText}. Pass at most one of `seconds` or `steps`. */
 export interface SealOptions {
@@ -252,9 +294,9 @@ export function sealText(plaintext: string, opts: SealOptions = {}): SealedText 
     if (!Number.isFinite(seconds) || seconds < MIN_SECONDS || seconds > MAX_SECONDS) {
       throw new RangeError(
         `sealText: \`seconds\` must be between ${MIN_SECONDS} and ${MAX_SECONDS}, got ${String(seconds)}. ` +
-          `Below ${MIN_SECONDS} the puzzle costs a crawler less than OCR would and stops being worth ` +
-          `shipping; above ${MAX_SECONDS} you are making a disabled reader wait minutes for words every ` +
-          `other reader already has, and buying no protection for it (see DEFAULT_SECONDS).`,
+          `The OCR-matched point is about ${DEFAULT_SECONDS}; past it a crawler simply takes the ` +
+          `cheaper door and every extra second is paid by a disabled reader waiting longer for words ` +
+          `every other reader already has (see DEFAULT_SECONDS for the measurements).`,
       );
     }
     t = Math.round(seconds * REFERENCE_SQUARINGS_PER_SECOND);

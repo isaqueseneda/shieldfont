@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { Shield, setCamouflage, withShieldRenderPass } from "../src/Shield.js";
+import { solveText, type SealedText } from "@shieldfont/core/puzzle";
 import {
   props,
   walkAll,
@@ -72,7 +73,7 @@ describe("the encoded block stays hidden", () => {
   it("never renders a link, in any configuration", () => {
     // The removed 0.2.0 text mode was an <a href> to the original words. The
     // replacement must not quietly reintroduce one.
-    for (const a11y of [FAST, { mode: "text" } as const, { mode: "text", seconds: 120 } as const]) {
+    for (const a11y of [FAST, { mode: "text" } as const, { mode: "text", seconds: 28 } as const]) {
       expect(findAllTags(Shield({ children: BODY, explain: false, a11y }), "a")).toHaveLength(0);
     }
   });
@@ -112,11 +113,53 @@ describe("the plaintext does not ship", () => {
     }
   });
 
-  it("ships only n, t, iv and ct in the payload", () => {
+  it("ships an ARRAY of payloads, each with only n, t, iv and ct", () => {
+    // An array since 0.3.2: the real payload rides among decoys, so that
+    // pulling every sealed blob out of the HTML and grinding them natively —
+    // the cheapest attack on this path, and one script does it to every site
+    // using the library — costs four times as much with nothing to say which
+    // one matters. See src/decoys.ts.
     const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
     expect(holder).toBeDefined();
     const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
-    expect(Object.keys(JSON.parse(json)).sort()).toEqual(["ct", "iv", "n", "t"]);
+    const payloads = JSON.parse(json);
+    expect(Array.isArray(payloads)).toBe(true);
+    expect(payloads).toHaveLength(4);
+    for (const p of payloads) {
+      expect(Object.keys(p).sort()).toEqual(["ct", "iv", "n", "t"]);
+    }
+    // Every payload is a DIFFERENT seal — a repeated modulus would mark the
+    // duplicates as filler at a glance.
+    expect(new Set(payloads.map((p: { n: string }) => p.n)).size).toBe(4);
+  });
+
+  it("puts the real text among decoys, and the decoys leak nothing", () => {
+    // The property that matters, asserted by actually SOLVING every payload the
+    // way a bulk attacker would: pull the sealed blobs out of the HTML and
+    // grind them natively, no browser, no button.
+    const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
+    const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
+    const texts = (JSON.parse(json) as SealedText[]).map((p) => solveText(p));
+
+    // Exactly one is the reader's words. Zero would mean the block is broken;
+    // more than one would mean a decoy is carrying real text.
+    expect(texts.filter((t) => t === BODY)).toHaveLength(1);
+
+    // AND THE DECOYS ARE UNRELATED PROSE. This is the assertion that guards
+    // against the broken design: sealing the SAME paragraph under alpha, beta
+    // and gamma looks equivalent and is not, because three quarters of the words
+    // are identical across mappings and any two mappings agree with each other
+    // about half the time — so lining the four up and taking the most common
+    // word at each position recovers the plaintext, with no mapping and no font.
+    // Unrelated texts have nothing to align.
+    const realWords = new Set(BODY.toLowerCase().split(/\W+/).filter((w) => w.length > 4));
+    for (const t of texts.filter((x) => x !== BODY)) {
+      const shared = t
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 4 && realWords.has(w));
+      expect(shared.length).toBeLessThan(3);
+    }
   });
 
   it("escapes < in the payload so a future field cannot inject markup", () => {
