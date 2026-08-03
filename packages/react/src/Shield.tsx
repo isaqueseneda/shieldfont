@@ -150,12 +150,12 @@ export type ShieldA11y =
       mode: "text";
       /**
        * Grind time in seconds on a reference laptop. Default
-       * {@link DEFAULT_SECONDS} (20). Accepted range 5..120.
+       * {@link DEFAULT_SECONDS} (14). Accepted range 1..30.
        *
        * READ THIS BEFORE RAISING IT. Difficulty is bounded ABOVE by the cost of
        * OCR, not by paranoia: a crawler that finds this puzzle dearer than
        * rendering the page and reading the pixels simply reads the pixels. Past
-       * roughly 20 seconds you are buying no protection at all and charging it
+       * roughly 14 reference-seconds you are buying no protection at all and charging it
        * entirely to disabled readers. Lower it for short blocks if anything.
        */
       seconds?: number;
@@ -282,7 +282,9 @@ export interface ShieldProps {
    * `{ mode: "text" }` is the default and needs nothing from you: the original
    * words are encrypted into the page at build time and a button decodes them
    * in the browser. `{ mode: "none" }` is an explicit, auditable opt-out.
-   * Omitting `a11y` entirely logs one development-time warning per process.
+   * Omitting `a11y` entirely is silent and gets that same default. Turning the
+   * alternative OFF — `{ mode: "none" }` or `screenReader={false}` — logs one
+   * development-time warning per process.
    *
    * No mode renders a link to a plain-text copy. See {@link ShieldA11y}.
    *
@@ -293,26 +295,6 @@ export interface ShieldProps {
    */
   a11y?: ShieldA11y;
 
-  /**
-   * Draw the reader-facing notice: an outline enclosing this block, with a
-   * strip carrying one short sentence and two buttons ("Uncover",
-   * "Copy to clipboard"). Requires `a11y={{ mode: "text" }}` — it is the visible surface of
-   * that mode, and does nothing without a sealed payload to open.
-   *
-   * `true` uses every default; pass a {@link ShieldNotice} to change the copy,
-   * the labels, or whether the strip repeats at the bottom.
-   *
-   * SETTING THIS REPLACES the clipped control. `visualHidden` stops applying,
-   * because there is no longer anything hidden to reveal — which is the point.
-   * See the header of `notice.ts` for why the clipped default did not survive
-   * contact with issue #2.
-   *
-   * @example
-   *   <Shield a11y={{ mode: "text" }} notice>{body}</Shield>
-   *   <Shield a11y={{ mode: "text" }} notice={{ position: "top" }}>{pullQuote}</Shield>
-   *   <Shield a11y={{ mode: "text" }} notice={{ short: "Protegido de bots de IA." }}>{body}</Shield>
-   */
-  notice?: ShieldNotice | boolean;
 
   // ---- THE THREE INDEPENDENT SWITCHES -------------------------------------
   //
@@ -322,62 +304,67 @@ export interface ShieldProps {
   // some concealment for some access, and the sizes of those trades are very
   // different — so each says its own price in its own doc comment. Read them.
   //
-  // ---- AND THE FOUR TIERS THEY MAKE ---------------------------------------
+  //   screenReader   Ships the original words, encrypted, plus a control that
+  //                  decrypts them in the reader's browser. Costs ~3.3 kB of
+  //                  markup per block and a handful of matchable English
+  //                  strings. Buys the difference between a block a screen
+  //                  reader skips in silence and one a reader can get the
+  //                  words out of. The other two switches need this one:
+  //                  without a seal there is nothing for them to open.
   //
-  // The switches are the mechanism; these four are the names for the
-  // combinations anyone actually ships. They are the vocabulary used by the
-  // demo, by docs/plain-text-mode.md, and by every comment below. There is no
-  // `tier` prop — naming a thing is not the same as adding an API for it, and
-  // three orthogonal switches say more than one enum ever could.
+  //   wrapper        Draws the outline and the strip on screen. Costs ~1.6 kB
+  //                  more markup and, more importantly, says "protected from
+  //                  AI bots" in plain English in the HTML — the one
+  //                  fingerprint setCamouflage() cannot rename. Buys a reader
+  //                  who can SEE that something is different and act on it
+  //                  without knowing anything about this library.
   //
-  //   FULL          screenReader · explain · copyPaste          ← the default
-  //                 An outline round the block and a strip carrying the
-  //                 sentence and the controls. A reader who needs a screen
-  //                 reader, their own reading face, or a translator can SEE
-  //                 that something is different and act on it without knowing
-  //                 anything about this library.
+  //   copyPaste      Puts a short sentence on the clipboard instead of silent
+  //                  decoy words. Costs one attribute per block and one small
+  //                  shared script per page. Buys the person who copies a
+  //                  quote and would otherwise paste fluent, grammatical,
+  //                  WRONG English into their notes.
   //
-  //   INVISIBLE     screenReader · copyPaste · explain={false}
-  //                 Nothing drawn. The control is real, focusable and clipped
-  //                 off-screen, and a copy that would have been silently wrong
-  //                 lands a sentence on the clipboard instead. Everything FULL
-  //                 does for a listener, nothing it does for an eye.
-  //
-  //   MINIMAL       screenReader · explain={false} · copyPaste={false}
-  //                 The clipped control and nothing else. A human who selects
-  //                 and copies gets decoy words with no explanation — which is
-  //                 a cost paid by a person, not by a crawler, and is the
-  //                 reason this tier is documented rather than recommended.
-  //
-  //   SEALED SHUT   screenReader={false}
-  //                 One element, 274 bytes, no script and no sentence anyone
-  //                 can match on. Also: aria-hidden with no alternative, which
-  //                 fails WCAG 2.2 SC 1.3.1 on any reading. It is here because
-  //                 pretending it is not a choice people make would be a lie,
-  //                 and because a library that hides its worst option is a
-  //                 library you cannot trust about its best one.
-  //
-  // WHY THE DEFAULT MOVED TO FULL. It was SEALED-adjacent for 0.3.0 and 0.3.1
-  // — a bare <Shield> drew nothing — on the reasoning that the wrapper's plain
+  // ALL THREE DEFAULT ON. That is a deliberate change of posture from 0.3.0
+  // and 0.3.1, where `wrapper` (then called `explain`) defaulted off and a
+  // bare <Shield> drew nothing — on the reasoning that the wrapper's plain
   // English is the one thing setCamouflage() cannot rename, so it should be
   // opted into. That reasoning is intact; the conclusion changed. This library
-  // exists to deter bots, and every tier below FULL spends a human's time to
-  // do it: the screen-reader user who hears silence, the reader whose custom
-  // face turns the page to gibberish, the person who copies a quote and pastes
-  // nonsense into their notes. FULL is the only tier where none of those three
-  // is worse off, and it is one prop away from any of the others.
+  // exists to deter bots, and turning any of these three off spends a human's
+  // time to do it: the screen-reader user who hears silence, the reader whose
+  // custom face turns the page to gibberish, the person who pastes nonsense
+  // into their notes. With all three on, none of those three is worse off, and
+  // each is one prop away from being switched back.
+  //
+  // There is no combined `tier` / `level` / `mode` prop and there is no name
+  // for any particular combination of the three. There used to be four names
+  // in this comment, and they were deleted: a reader had to memorise which
+  // switches each name stood for before they could use it, and the switches
+  // say the same thing with nothing to memorise.
 
   /**
    * Ship the original words for assistive technology, sealed behind the
-   * time-lock puzzle. **Default `true`.**
+   * time-lock puzzle, and render the control that opens them. **Default
+   * `true`** — unconditionally, since nothing else has to be true first.
+   *
+   * This is the switch the other two stand on. `wrapper` and `copyPaste` both
+   * open the seal this one ships, so both are inert without it and both throw
+   * if you ask for them with this off.
    *
    * The cheapest of the three, and the one to leave alone — but "cheap" is
    * relative and the exact figures are worth having. Measured on one block,
-   * markup only, excluding the page-level font CSS and scripts:
+   * markup only, excluding the page-level font CSS and scripts, over 25
+   * renders of a 107-character paragraph (see MEASURE AGAIN below):
    *
-   *   screenReader:false   1 element,    247 bytes,  no identifying strings
-   *   screenReader:true   17 elements,  3537 bytes,  "Scrambled", "Uncover",
-   *                                                  "the original text"
+   *   screenReader:false   1 element,     276 bytes,  no identifying strings
+   *   screenReader:true   17 elements,  ~9 kB median, "Scrambled", "Uncover",
+   *                                                   "the original text"
+   *
+   * The first figure is almost all the block's own encoded text and moves with
+   * it — the same block at 52 and 63 characters measured 212 and 232 bytes —
+   * so quote it as "one element and the text", not as a constant. The second
+   * is dominated by four sealed payloads and varies with the padding bucket
+   * the decoys land in: median 9,458 bytes, range 8,082–10,818.
    *
    * So it is NOT signature-free, and an earlier version of this comment
    * claimed it was. The default note ({@link A11Y_NOTE}) says "scrambled" and
@@ -398,17 +385,24 @@ export interface ShieldProps {
   screenReader?: boolean | { seconds?: number };
 
   /**
-   * Draw the explanation wrapper: an outline enclosing the text with a strip
-   * carrying the sentence and the controls. **Default `true`** wherever there
-   * is a seal to open — this is the FULL tier. `explain={false}` gives you
-   * INVISIBLE; see the tier note above.
+   * Draw the visible wrapper: an outline enclosing the text with a strip
+   * carrying one sentence and the controls. **Default `true`** wherever there
+   * is a seal to open, i.e. wherever {@link screenReader} is on. Two
+   * exceptions, both of which mean "not drawn" rather than "throws": a block
+   * with no seal draws nothing, and an inline tag (`as="span"` and the rest of
+   * {@link INLINE_TAGS}) draws nothing either, because the wrapper is a
+   * block-level box and a `<div>` mid-paragraph breaks both the layout and
+   * hydration. Asking for it EXPLICITLY in either case throws.
    *
-   * THIS IS THE EXPENSIVE ONE, and the name is deliberate — it is not called
-   * `accessibility`, because what it is is an explanation, and what it does is
-   * make the page announce itself. It says "protected from AI bots" in plain
-   * English, on screen, in the HTML, once per block. Every word of that is a
-   * string a crawler can match on, and `setCamouflage()` cannot reach any of
-   * it: hashes rename attributes and font families, not prose.
+   * THIS IS THE EXPENSIVE ONE. It was called `explain`, which named the
+   * sentence inside the box rather than the box; `wrapper` names what the prop
+   * actually decides — whether anything is drawn on screen at all. Passing
+   * `explain` now throws (see {@link RENAMED_PROPS}).
+   *
+   * What it costs is that the page announces itself. It says "protected from AI
+   * bots" in plain English, on screen, in the HTML, once per block. Every word
+   * of that is a string a crawler can match on, and `setCamouflage()` cannot
+   * reach any of it: hashes rename attributes and font families, not prose.
    *
    * So the honest framing is a trade, not an upgrade. You gain a reader who can
    * see that something is different and act on it — the person from issue #2
@@ -416,63 +410,76 @@ export interface ShieldProps {
    * control that was never drawn. You lose the property that your protected
    * pages look like everyone else's pages.
    *
-   * The size of the loss, measured on one block, markup only:
+   * The size of the loss, measured on one block, markup only, as the median of
+   * 25 renders of a 107-character paragraph:
    *
-   *   screenReader only      17 elements,  3537 bytes
-   *   explain position:"top" 30 elements,  5128 bytes
-   *   explain position:"both" 55 elements, 7685 bytes
+   *   screenReader only       17 elements,  ~9 kB  (median  9,458)
+   *   wrapper position:"top"  32 elements, ~11 kB  (median 11,499)
+   *   wrapper position:"both" 59 elements, ~14 kB  (median 14,204)
    *
-   * The second strip is 25 elements and 2.6 kB of that, and it duplicates every
-   * control and every sentence. On a short block prefer `"top"`.
+   * The second strip is 27 elements and ~2.7 kB of that, and it duplicates
+   * every control and every sentence. On a short block prefer `"top"`.
    *
-   * MEASURE AGAIN BEFORE QUOTING THESE. Every figure above was wrong until
-   * 0.3.2 — wrong in BOTH directions, by up to 55% — because they were written
-   * once and then argued from for two releases while the markup moved under
-   * them. Reproduce with: render one block, strip the page-level <style> and
-   * <script> (those are per page, not per block), keep the sealed JSON, count
-   * `<tag` openings and bytes. A number nobody can reproduce is worse than no
-   * number in a file that argues from numbers.
+   * MEASURE AGAIN BEFORE QUOTING THESE, and quote them as medians. Every
+   * figure here was wrong until 0.3.2 — wrong in BOTH directions — because
+   * they were written once and then argued from for two releases while the
+   * markup moved under them. They are not stable to three digits either: four
+   * sealed payloads per block put a few kB of spread on every row (the "top"
+   * row ranged 10,123–12,859 across those 25 renders) and the byte counts
+   * scale with the block's own text. Reproduce with: render one block, strip
+   * the page-level <style> and <script> (those are per page, not per block),
+   * keep the sealed JSON, count `<tag` openings and bytes, and take a median
+   * over enough renders to cover the padding buckets. A number nobody can
+   * reproduce is worse than no number in a file that argues from numbers.
    *
    * Two things soften it and neither eliminates it: the wording is yours to
    * change ({@link ShieldNotice.short}/{@link ShieldNotice.text}), and a wrapper
    * that also appears above UNPROTECTED text stops being evidence of anything.
    *
-   * `explain={false}` gives you exactly what shipped in 0.3.0 and 0.3.1: a
+   * `wrapper={false}` gives you exactly what shipped in 0.3.0 and 0.3.1: a
    * clean block with the accessible path present but not drawn. That was the
-   * default then and is not now; the tier note above says why the trade was
-   * made the other way.
+   * default then and is not now; the note above the three switches says why the
+   * trade was made the other way.
    *
    * Requires {@link screenReader} — there is nothing to reveal without a seal.
    */
-  explain?: ShieldNotice | boolean;
+  wrapper?: ShieldNotice | boolean;
 
   /**
-   * Mediate copy-paste. **Default `true`** wherever there is a seal. It is
-   * independent of {@link explain}: turning the wrapper off does not turn this
-   * off, because a silently-wrong paste is a cost paid by a person and by no
-   * crawler at all. `copyPaste={false}` with `explain={false}` is MINIMAL.
+   * Mediate copy-paste. **Default `true`** wherever there is a seal, i.e.
+   * wherever {@link screenReader} is on — the same condition as
+   * {@link wrapper}, evaluated independently of it.
+   *
+   * INDEPENDENT OF {@link wrapper}, and the independence is the point: turning
+   * the wrapper off does not turn this off. It used to (`copyOn` read
+   * `: wantsNotice`), which meant a decision about whether to draw a box
+   * silently also decided whether a copied paragraph came out wrong. A
+   * selection that lands fluent, grammatical, WRONG English in someone's notes
+   * costs a human something and costs a crawler nothing — it is the one
+   * behaviour in this library that deters no bot at all — so it gets its own
+   * switch and its own default.
    *
    * Middling cost. It never disables selection — `user-select:none` would break
    * the exact reader this was built for. What it does is narrower: a selection
    * that touches still-protected text puts a short notice on the clipboard
-   * instead of silent decoy words, and (when {@link explain} is on) the strip
+   * instead of silent decoy words, and (when {@link wrapper} is on) the strip
    * carries a Copy button that grinds the puzzle first.
    *
    * The camouflage cost is one sentence: the clipboard notice ships in the HTML
    * as an attribute, and it names the mechanism the same way the wrapper does.
    * Turn it off and a copied paragraph is silently wrong, which is worse for a
-   * person and no obstacle at all to a crawler — so the default follows
-   * `explain` rather than being independently off.
+   * person and no obstacle at all to a crawler — which is why it defaults on
+   * rather than being something you have to know to ask for.
    *
    * WORKS ON ITS OWN as of 0.3.2. It used to be accepted and silently inert
-   * without {@link explain}, which this comment admitted and which is the
-   * failure class this file fails loud on everywhere else. `copyPaste` with no
-   * wrapper now emits a page-level `copy` listener and marks each protected
-   * block with the clipboard sentence — one attribute per block, one small
-   * shared script per page, and no new elements. What a reader gets instead of
-   * a button they can see is a sentence naming the control that is already
-   * there: `<Shield>` renders the accessible alternative immediately before the
-   * block, so Tab and a screen reader both reach it.
+   * without a wrapper, which this comment admitted and which is the failure
+   * class this file fails loud on everywhere else. `copyPaste` with no wrapper
+   * now emits a page-level `copy` listener and marks each protected block with
+   * the clipboard sentence — one attribute per block, one small shared script
+   * per page, and no new elements. What a reader gets instead of a button they
+   * can see is a sentence naming the control that is already there: `<Shield>`
+   * renders the accessible alternative immediately before the block, so Tab and
+   * a screen reader both reach it.
    *
    * REQUIRES {@link screenReader}, and throws without it. With no seal there is
    * no path to the words in any browser, so interception could only ever put a
@@ -481,9 +488,6 @@ export interface ShieldProps {
    * rejected once. For the same reason the listener stands down at runtime when
    * a browser cannot open the seal at all (no `BigInt`, no `crypto.subtle`, an
    * insecure origin): no path, no notice.
-   *
-   * It still defaults to whatever `explain` is, so nothing changes for anyone
-   * who never names it, and the all-off tier is untouched.
    */
   copyPaste?: boolean | { notice?: string };
 
@@ -509,9 +513,45 @@ export interface ShieldProps {
  */
 const SHIELD_PROPS = new Set([
   "as", "variant", "weight", "lineHeight", "size",
-  "className", "style", "rotate", "a11y", "notice",
-  "screenReader", "explain", "copyPaste", "children",
+  "className", "style", "rotate", "a11y",
+  "screenReader", "wrapper", "copyPaste", "children",
 ]);
+
+/**
+ * Props that were renamed, and what they were renamed to. Passing one throws
+ * with the new name in the message.
+ *
+ * NOT AN ALIAS TABLE. Nothing here is forwarded. A silent alias would leave two
+ * spellings of one prop alive in every codebase that used the old one, and the
+ * next person reading that code has to know both — which is the cost the rename
+ * was made to remove. The generic unknown-prop throw above would already fire
+ * on these, but it would recite the whole accepted-props list and leave the
+ * author to guess which entry replaced theirs. One line naming the successor is
+ * the difference between an error and an answer.
+ *
+ * `explain` -> `wrapper`: the prop decides whether the box is DRAWN. `explain`
+ * named the sentence printed inside it, which is one thing the box contains,
+ * and read as though `explain={false}` would keep the box and drop the words.
+ */
+const RENAMED_PROPS: Record<string, { to: string; why: string }> = {
+  notice: {
+    to: "wrapper",
+    why:
+      "it is the 0.3.0 spelling of the same prop. It kept working as a silent " +
+      "alias while `explain` — the other old name for it — threw, so the same " +
+      "mistake was loud in one spelling and silent in the other, and no " +
+      "document mentioned this one at all. Silent aliases are the thing this " +
+      "component refuses to do everywhere else: the value is unchanged, so " +
+      "renaming the key is the whole migration",
+  },
+  explain: {
+    to: "wrapper",
+    why:
+      "it controls whether the visible wrapper is drawn on screen, not what the " +
+      "wrapper says. The value is unchanged — same boolean, same object with " +
+      "`text`, `labels`, `position`, `className` — so this is a rename of the key and nothing else",
+  },
+};
 
 const MAPPINGS: Record<ShieldVariant, Record<string, string>> = {
   alpha: alpha as Record<string, string>,
@@ -664,9 +704,46 @@ export function setCamouflage(opts: CamouflageOptions): void {
       Object.assign(camo.file, opts.filePrefix);
     }
   }
-  if (opts.attrName) camo.attrName = opts.attrName;
+  // `attrName` IS SPLICED RAW INTO CSS SELECTORS and into `querySelectorAll`
+  // strings in every emitted script — `'[' + ATTR + '-frame]'`. A value with a
+  // bracket, a quote or a space does not throw: it produces a selector that
+  // silently matches nothing, so the guard never fires, the notice never wires,
+  // and the page looks fine while every protected block is inert. Worth more
+  // than the escaping above, because this one breaks things today.
+  //
+  // The pattern deliberately accepts what the `hash` path generates
+  // (`data-typeface-a8f3`) and is checked against it by a test.
+  if (opts.attrName) {
+    if (!/^data-[a-zA-Z0-9-]+$/.test(opts.attrName)) {
+      throw new Error(
+        `${camo.logPrefix} setCamouflage({ attrName }) must look like "data-something" ` +
+          `(letters, digits and dashes only) because it is used verbatim in CSS ` +
+          `selectors. Got ${JSON.stringify(opts.attrName)}.`,
+      );
+    }
+    camo.attrName = opts.attrName;
+  }
   if (opts.guardFlag) camo.guardFlag = opts.guardFlag;
   if (opts.logPrefix) camo.logPrefix = opts.logPrefix;
+}
+
+/**
+ * A string literal, safe to sit inside a `<script>` element.
+ *
+ * `JSON.stringify` escapes for JavaScript, not for HTML. An HTML parser closes
+ * a `<script>` at the first literal `</` sequence regardless of JavaScript
+ * quoting, so a camouflage value containing one would cut the script in half
+ * and spill the rest into the page as text. The JSON payload holder was already
+ * escaped this way; the four emitted scripts were not, which was an
+ * inconsistency as much as a hole.
+ *
+ * HONEST SEVERITY: these values come from the author's own `setCamouflage()`
+ * call, so this is a footgun, not an attack surface — the threat model has no
+ * adversary supplying camouflage config. It is fixed because it costs one
+ * function and removes a whole class of "why is my page showing code".
+ */
+function js(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 // ---- Per-render-pass emission registry --------------------------------------
@@ -792,8 +869,15 @@ function currentPass(): PassRegistry | null {
  * Claim `key` in one of the registry's buckets for this render pass. Returns
  * `true` when the caller owns the claim and should emit the markup, which is
  * unconditionally the case when no pass scope is active.
+ *
+ * @internal Exported for `./NonShield.tsx` ONLY, and deliberately absent from
+ * `index.ts`. <NonShield> has to share this exact registry rather than keep one
+ * of its own: a page mixing the two components must emit ONE @font-face
+ * stylesheet no matter which of them renders first, and two registries would
+ * emit two. Not part of the public API; nothing outside this package should
+ * reach for it.
  */
-function claim(bucket: "styles" | "guards" | "weights" | "solvers" | "notes", key: string): boolean {
+export function claim(bucket: "styles" | "guards" | "weights" | "solvers" | "notes", key: string): boolean {
   const pass = currentPass();
   if (!pass) return true;
   if (pass[bucket].has(key)) return false;
@@ -1004,7 +1088,8 @@ function weightFile(prefix: string, numeric: number): string {
  * the mistake the font-load guard used to make (it probed a bare `1em` font
  * shorthand, i.e. weight 400, and pulled Regular onto every page).
  */
-function fontFaceCss(variant: ShieldVariant): string {
+/** @internal Exported for `./NonShield.tsx` only — see {@link claim}. */
+export function fontFaceCss(variant: ShieldVariant): string {
   const file = camo.file[variant];
   const family = camo.family[variant];
   // woff2 only — universally supported and keeps the bundled package small
@@ -1090,6 +1175,20 @@ function resolveWeight(weight: ShieldWeight | undefined): number | undefined {
 }
 
 /**
+ * The camouflage state and the configured font host, for `./NonShield.tsx`.
+ *
+ * @internal Read through a function rather than exporting the bindings, because
+ * both are MUTABLE: `setCamouflage()` rewrites `camo` in place and
+ * `setFontHost()` reassigns `fontHost`. A module that captured either at import
+ * time would hold the pre-configuration values and quietly emit a stylesheet
+ * pointing at the wrong place — the failure this package treats as the worst
+ * kind, since the page still renders and only the font is missing.
+ */
+export function currentCamo(): { camo: CamouflageState; fontHost: string } {
+  return { camo, fontHost };
+}
+
+/**
  * The font-load guard. Inlined into the page so it runs the moment the
  * browser parses it, with no React hydration dependency.
  *
@@ -1165,6 +1264,50 @@ function resolveWeight(weight: ShieldWeight | undefined): number | undefined {
  *   ours, since an override font has no GSUB ligature table and will show the
  *   encoded text on screen.
  */
+/**
+ * ## What the emitted guard does NOT carry — and for a while, did
+ *
+ * The other three emitted scripts state, as their design rule, that no comment
+ * and no mechanism-naming word survives into the page. `solver.ts` even says
+ * "the font guard has always been written this way," which was simply false:
+ * this script shipped twenty-two lines of comments and console strings reading
+ * "inside protected region" and "encoded gibberish (no ligature table)" into
+ * the served HTML of every page using the library.
+ *
+ * That is the one place it matters most. A project that called
+ * `setCamouflage({ hash })` to share no signature with any other site had that
+ * undone by these strings, and the naive pattern-matching scraper this library
+ * exists to raise costs for is looking at exactly these bytes. The explanations
+ * are below; they stop at the compiler. The console messages keep every
+ * actionable word — which element, which family, what to do — and lose only the
+ * nouns that identify the mechanism. Failing loud is a feature; naming yourself
+ * while doing it is not.
+ *
+ * `test/emitted.test.ts` now asserts this for every emitted script generically,
+ * so the next one cannot regress either.
+ *
+ * ## Three decisions that used to be explained inline
+ *
+ * - **`SEL` is scoped to this guard's own variant, not the bare attribute.**
+ *   One guard is emitted per family and auto-rotation puts two or three
+ *   families on a normal page, so a bare-attribute selector made every guard
+ *   inspect every other variant's elements. Two bugs came out of that on the
+ *   DEFAULT configuration: a stream of warnings claiming beta's blocks used the
+ *   wrong font (they used beta's font, correctly), and — far worse — one
+ *   variant's font 404ing blanked the blocks of variants that had loaded fine.
+ *
+ * - **`BROKEN` is not the sentence the strip shows,** and used to be. The strip
+ *   sits above the words, so "the text below" points at them; the block IS the
+ *   words, so there the same sentence points at whatever comes next. It also
+ *   named the Uncover button, which the tiers without a wrapper do not have.
+ *
+ * - **`checkDescendants` checks the root element itself, then its descendants.**
+ *   Checking only descendants was the whole bug: the font-family arrives as an
+ *   inline style, which loses to any author `!important`, so a theme rule like
+ *   `article p { font-family: Georgia !important }` painted raw decoys to every
+ *   reader while this guard — whose entire job is to catch that — stayed silent,
+ *   because the element carrying the override was the root.
+ */
 function fontGuardScript(
   family: string,
   host: string,
@@ -1177,29 +1320,16 @@ function fontGuardScript(
   const prefix = camo.logPrefix;
   return `(function(){
 if (typeof window === 'undefined' || typeof document === 'undefined') return;
-var FLAG   = ${JSON.stringify(flag)};
-var FAMILY = ${JSON.stringify(family)};
-var HOST   = ${JSON.stringify(host)};
-var ATTR   = ${JSON.stringify(attr)};
-// One guard is emitted per FAMILY, and auto-rotation puts two or three families
-// on a normal page. Selecting on the bare attribute made every guard inspect
-// every OTHER variant's elements too, which produced two bugs on the default
-// configuration: a stream of console warnings claiming beta's blocks were using
-// "the wrong font" (they were using beta's font, correctly), and — far worse —
-// one variant's font 404ing blanked the blocks belonging to variants that had
-// loaded fine. Scope every lookup to this guard's own variant.
-var SEL    = '[' + ATTR + '=' + ${JSON.stringify(JSON.stringify(variant))} + ']';
-var FAILED = ${JSON.stringify(failedAttr)};
+var FLAG   = ${js(flag)};
+var FAMILY = ${js(family)};
+var HOST   = ${js(host)};
+var ATTR   = ${js(attr)};
+var SEL    = '[' + ATTR + '=' + ${js(JSON.stringify(variant))} + ']';
+var FAILED = ${js(failedAttr)};
 var ALT    = '[' + ATTR + '-group]';
-var PFX    = ${JSON.stringify(prefix)};
+var PFX    = ${js(prefix)};
 var SEED   = ${seedWeight === null ? "null" : String(seedWeight)};
 var TIMEOUT_MS = 4000;
-// The sentence the STRIP shows and the name the BLOCK carries are not the same
-// string, and used to be. The strip sits above the words, so "the text below"
-// points at them correctly; the block IS the words, so on the block the same
-// sentence points at whatever comes next. It also named the Uncover button,
-// which the tiers without a wrapper do not have. Self-referential, and true on
-// every tier.
 var BROKEN = 'This text isn\\'t showing correctly.';
 var reg = window[FLAG] || (window[FLAG] = {});
 var prev = reg[FAMILY];
@@ -1212,7 +1342,7 @@ function fail(reason){
   if (done) return; done = true;
   console.error(
     PFX + ' Font "' + FAMILY + '" failed to load (' + reason + '). ' +
-    'Replacing every ' + SEL + ' element with a fallback message. ' +
+    'Every ' + SEL + ' element will show a fallback message. ' +
     'Verify the font is reachable at ' + HOST + '/.'
   );
   var css =
@@ -1247,12 +1377,6 @@ function checkDescendants(){
   var warnings = 0;
   for (var i = 0; i < roots.length; i++) {
     var root = roots[i];
-    // The protected element ITSELF, then its descendants. Checking only
-    // descendants was the whole bug: our font-family arrives as an inline
-    // style, which loses to any author !important, so a theme rule such as
-    // "article p { font-family: Georgia !important }" painted raw decoys to
-    // every reader while this guard, whose entire job is to catch exactly
-    // that, stayed silent -- the element carrying the override was the root.
     var all = [root];
     var kids = root.querySelectorAll('*');
     for (var n = 0; n < kids.length; n++) all.push(kids[n]);
@@ -1268,16 +1392,16 @@ function checkDescendants(){
       var family = window.getComputedStyle(el).fontFamily || '';
       if (family.indexOf(FAMILY) === -1 && warnings < 5) {
         console.warn(
-          PFX + ' <' + el.tagName.toLowerCase() + '> inside protected region uses ' +
+          PFX + ' <' + el.tagName.toLowerCase() + '> matching ' + SEL + ' uses ' +
           'font-family "' + family + '" instead of "' + FAMILY + '". ' +
-          'Its text will render as encoded gibberish (no ligature table). ' +
-          'Either remove the override, or move the element outside the protected region.'
+          'Its text will not display correctly. ' +
+          'Either remove the override, or move the element outside.'
         );
         warnings++;
       }
     }
   }
-  if (warnings >= 5) console.warn(PFX + ' ' + warnings + '+ font-family overrides found in protected regions; only first 5 logged.');
+  if (warnings >= 5) console.warn(PFX + ' ' + warnings + '+ font-family overrides found matching ' + SEL + '; only first 5 logged.');
 }
 function pass(){
   if (done) return; done = true;
@@ -1811,10 +1935,14 @@ function isProduction(): boolean {
 }
 
 /**
- * Omitting `a11y` entirely gets ONE development-time warning per process —
- * deliberately a warning and not an error, because an error would break every
- * existing install on upgrade. `{ mode: "none" }` silences it: an explicit,
- * auditable opt-out is a decision someone made, which is all we are asking for.
+ * Turning the accessible alternative OFF gets ONE development-time warning per
+ * process — deliberately a warning and not an error, because an error would
+ * break every existing install on upgrade. The name is historical: it fired on
+ * an omitted `a11y` back when omitting it meant no alternative shipped. Since
+ * 0.3.2 `screenReader` defaults on, so an omitted prop is the *good* case and
+ * says nothing; what warns now is `screenReader={false}` / `{ mode: "none" }`,
+ * which is still worth one line on a console, because it is the configuration
+ * where assistive technology gets nothing at all.
  *
  * The message recommends `mode: "text"` first, because it is the one that asks
  * nothing of the author. What it must never do again is suggest pointing `a11y`
@@ -1863,7 +1991,16 @@ function renderA11y(
   // when screenReader was set false, because otherwise the caller substitutes
   // a text-mode config. So the warning fires for a decision someone made,
   // never for a default they never saw.
-  if (!a11y || a11y.mode === "none") {
+  //
+  // `!== "text"` rather than `=== "none"`, because a plain-JS caller can still
+  // pass the retired `{ mode: "audio" }` (or any typo) past TypeScript. The
+  // equality check sent those down the text path, which sealed the words and
+  // rendered a note telling a screen-reader user to "uncover the text" next to
+  // an Uncover button that was display:none and never wired (no solver is
+  // emitted when the resolved config is not the text mode) — an instruction
+  // with no control behind it, on exactly the tier that cannot see the screen.
+  // An unknown mode is an opt-out plus the dev warning, never half a control.
+  if (!a11y || a11y.mode !== "text") {
     warnIfNoA11y();
     return null;
   }
@@ -1871,6 +2008,10 @@ function renderA11y(
   const attr = camo.attrName;
   const Wrap = (inline ? "span" : "div") as ElementType;
   const Note = (inline ? "span" : "p") as ElementType;
+  // The same sentence the drawn tier swaps in, deliberately word-for-word: a
+  // reader who meets both tiers on one site should not be told the same fact
+  // two ways.
+  const openNote = "You are now reading the original text.";
   // DEFAULT: the whole control is screen-reader-only.
   //
   // A sighted reader can already read the block perfectly — the font does that
@@ -1918,25 +2059,47 @@ function renderA11y(
         <span aria-hidden="true" {...({ [`${attr}-icon`]: "on" } as Record<string, string>)}>
           <Icon d={ICONS.shield} />
         </span>
+        {/*
+          `-open-note` carries the sentence to swap in once the block is open.
+
+          Without it the note said "please uncover the text before reading",
+          permanently, about text the reader had already uncovered — a false
+          instruction left in front of exactly the readers who cannot glance at
+          the screen and see that it is stale. The drawn tier had solved this a
+          release earlier via `-open-say`; this tier never got the same
+          treatment.
+
+          Rendered here rather than written by the script for the reason the note
+          itself exists: attribute text is skipped by browser translation, and
+          text this file renders can at least be overridden by an author. It
+          costs one more constant English sentence on a tier that already ships
+          the note and the button name, so it does not move this tier into a
+          different detectability class — and a permanently false instruction is
+          the quiet misleading the whole wrapper exists to prevent.
+        */}
         <Note
           className={`${attr}-say-full`}
-          {...({ [`${attr}-alt-note`]: "", [`${attr}-say-full`]: "" } as Record<string, string>)}
+          {...({
+            [`${attr}-alt-note`]: "",
+            [`${attr}-say-full`]: "",
+            [`${attr}-open-note`]: openNote,
+          } as Record<string, string>)}
           tabIndex={0}
           role="note"
-        >
-          {/*
-            NO aria-label. It held this same sentence, so the string was in the
-            DOM twice: browse mode reads the content, focus reads the name, and
-            some assistive technology reads both.
-            
-            The deciding argument is narrower and worse than duplication.
-            Attribute text is skipped by browser translation — so the one
-            sentence whose entire job is to tell a translator user to uncover
-            the text was being delivered in the single form a translator cannot
-            reach. The text node is translated; the label was not.
-          */}
-          {note}
-        </Note>
+          // NO aria-label. It held this same sentence, so the string was in the
+          // DOM twice: browse mode reads the content, focus reads the name, and
+          // some assistive technology reads both.
+          //
+          // The deciding argument is narrower and worse than duplication.
+          // Attribute text is skipped by browser translation — so the one
+          // sentence whose entire job is to tell a translator user to uncover
+          // the text was being delivered in the single form a translator cannot
+          // reach. The text node is translated; the label was not.
+          //
+          // Inner HTML rather than a child, so the solver can swap this sentence
+          // for the open-state one without React putting it back. See textHtml.
+          dangerouslySetInnerHTML={textHtml(note)}
+        />
       </span>
       {renderPuzzle(
         a11y.seconds,
@@ -2053,6 +2216,40 @@ function puzzleLabel(_tag: string | null, _ordinal: number, seconds: number): st
  * never owns — which is a larger change than this one and not a correctness fix.
  */
 const EMPTY_HTML = { __html: "" };
+
+/**
+ * Text rendered as opaque inner HTML, so the script may rewrite it later.
+ *
+ * Same trick as {@link EMPTY_HTML} and for the same reason: React reconciles a
+ * string child and will restore it, but it does not diff a
+ * `dangerouslySetInnerHTML` payload's text. The clipped tier's note needs this
+ * because the solver swaps its sentence once the block is open — without it,
+ * hydration finds the server's "you are now reading the original text" where
+ * the client expects "please uncover the text", replaces the whole subtree, and
+ * takes the revealed words with it.
+ *
+ * The audit caught this within minutes of the change, which is the entire
+ * reason `scripts/hydration-audit.mjs` exists.
+ *
+ * WHAT IS LEFT, said plainly: React still WARNS in development that this prop
+ * did not match, because the server's markup holds the open-state sentence and
+ * the client render produces the locked one. It does not patch it — the same
+ * deal as the attribute writes described above `EMPTY_HTML`. So this costs a
+ * console line in `next dev` for a returning reader, and nothing in production.
+ * The audit runs a production build and reports zero recoverable errors.
+ *
+ * ESCAPED, because `note` is author-supplied — the one difference from every
+ * other `dangerouslySetInnerHTML` in this file, which all carry module
+ * constants. `&` first, or it would double-escape the entities added after it.
+ */
+function textHtml(text: string): { __html: string } {
+  return {
+    __html: text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;"),
+  };
+}
 
 /**
  * A Lucide glyph. `d` is always a module constant from {@link ICONS}, never
@@ -2424,7 +2621,7 @@ function NoticeStrip({
             className={`${attr}-clipped`}
             {...({ [`${attr}-heard`]: "" } as Record<string, string>)}
           >
-            {lead ? notice.text : notice.repeat}
+            {lead && firstOnPage ? notice.text : notice.repeat}
           </span>
         </span>
         {/*
@@ -2496,7 +2693,7 @@ function renderPuzzle(
   // Same arrangement as the drawn tier — see decoys.ts. `blockId` is the
   // position marker and must match what the emitted solver derives, or the
   // browser grinds a decoy and fails to decrypt with nothing useful to say.
-  const sealed = sealWithDecoys(plain, mapping, target, camo.attrName, blockId);
+  const sealed = sealWithDecoys(plain, mapping, target, blockId);
 
   // The revealed words go into the SAME element type the shield itself uses, so
   // <Shield as="h2"> reveals into an <h2>. Without this the output was always a
@@ -2527,7 +2724,7 @@ function renderPuzzle(
         "up to N seconds" — a ceiling, not an estimate. `seconds` is a
         difficulty budget denominated on a deliberately slow reference device,
         so a current desktop finishes well inside it (measured in Chrome, the
-        20-second default completes in 7.6 s) while an old phone may take
+        14-second default completes in about 2.5 s) while an old phone may take
         longer. "about" was dropped from this string after hearing it read
         aloud: "up to about twenty seconds" is four words to say something two
         can, and the live status line replaces it with a real per-device
@@ -2559,7 +2756,7 @@ function renderPuzzle(
         announce on its own" is true of VoiceOver, the only reader this path has
         ever been tested against. NVDA ships "Progress bar output: Beep" ON by
         default and plays a rising tone on every value change, and the solver
-        drives roughly 200 of them across a 5-20 second wait. That is twenty
+        drives roughly 200 of them across a few-second wait. That is twenty
         seconds of beeping over the top of the polite live region trying to
         explain what is happening. Nothing is lost by hiding the bar: the
         estimate and the milestones are spoken by the status line.
@@ -2595,14 +2792,33 @@ function renderPuzzle(
         dangerouslySetInnerHTML={EMPTY_HTML}
       />
       {/*
-        `aria-live` on the OUTPUT, not just on the status line. Moving focus
-        here was supposed to be enough, and measured with a screen reader it was
-        not: the focus landed and announced the bare word "paragraph", never the
-        words themselves, so a reader pressed the button, heard "Done", and then
-        could not find what they had just waited for. Making the output its own
-        polite region means filling it speaks it. It is the same element either
-        way, so the text stays navigable and re-readable afterwards rather than
-        being a one-shot announcement.
+        NO STATIC `aria-live` HERE, AND THAT IS A CORRECTION.
+
+        It used to carry `aria-live="polite"`, for a good reason found in a real
+        screen-reader session: moving focus to the output announced the bare word
+        "paragraph" and never the words, so a reader pressed the button, heard
+        "Done", and could not find what they had waited for. Making the output
+        its own polite region meant filling it spoke it.
+
+        Then 0.3.2 made one press uncover EVERY block on the page, and that
+        decision quietly invalidated this one. Nine blocks, nine polite regions,
+        all filling within a second or two of each other in whatever order the
+        puzzles happened to finish: the reader pressed one button and the entire
+        article was read at them, out of order, with no way to stop it. A correct
+        decision made stale by a later one, which is worse than a wrong decision
+        because nothing looks wrong at either site.
+
+        Liveness now belongs to the block the reader actually PRESSED, and the
+        emitted script grants it at press time — it has `own`, and this file does
+        not. The grind gives assistive technology seconds to register the region
+        before any content arrives, so the usual "live regions must exist before
+        they are filled" caution does not bite here. Blocks that filled because
+        of the broadcast stay silent and remain Tab stops in reading order, which
+        is how someone reads an article.
+
+        Removing the static attribute also fixes a quieter case: a returning
+        reader whose answers are restored from localStorage before hydration is
+        no longer read the whole article on page load.
 
         In `"hidden"` reveal the clip styles are baked in HERE rather than
         applied by script, so the element is already off-screen the instant it
@@ -2615,7 +2831,6 @@ function renderPuzzle(
       <Out
         tabIndex={-1}
         hidden
-        aria-live="polite"
         style={reveal === "hidden" ? { ...VISUALLY_HIDDEN, ...OFF } : OFF}
         className={`${attr}-alt-out`}
         {...({ [`${attr}-out`]: reveal } as Record<string, string>)}
@@ -2663,9 +2878,8 @@ export function Shield(props: ShieldProps) {
     style,
     rotate,
     a11y,
-    notice,
     screenReader,
-    explain,
+    wrapper,
     copyPaste,
     children,
   } = props;
@@ -2673,6 +2887,21 @@ export function Shield(props: ShieldProps) {
   // Fail loud in dev if this server component is being rendered on the client
   // (a "use client" boundary or a client-only React app ships the plaintext).
   warnIfClientRender();
+
+  // A RENAMED PROP IS A DEAD PROP HERE, not a silent alias. Checked BEFORE the
+  // generic unknown-prop throw below, which would otherwise catch these and
+  // answer with a list instead of a name. See {@link RENAMED_PROPS}.
+  for (const [old, { to, why }] of Object.entries(RENAMED_PROPS)) {
+    if (old in props) {
+      throw new Error(
+        `${camo.logPrefix} <Shield> received \`${old}\`, which was renamed to \`${to}\`. ` +
+          `Rename it: \`${to}\` because ${why}. ` +
+          `Nothing forwards \`${old}\` — a block that kept it would render with the ` +
+          `wrapper's default rather than the setting you asked for, which is the silent ` +
+          `failure this component throws to avoid.`,
+      );
+    }
+  }
 
   // <Shield> is not a polymorphic pass-through: it renders a known set of
   // attributes and DROPS everything else. That silence is the problem — the
@@ -2749,6 +2978,28 @@ export function Shield(props: ShieldProps) {
     // enough to expose that decoys are in play. The @font-face weight bands
     // already leave no gap for weight synthesis; this also covers faux italic.
     fontSynthesis: "none",
+    // RE-ASSERT `ccmp`, because the whole substitution mechanism rides on it.
+    //
+    // `font-feature-settings` is an INHERITED property, and every word swap in
+    // this package is a GSUB lookup wired into the `ccmp` feature (see
+    // scripts/generate_font.py, "Wire A, B, D, E into ccmp"). So any ancestor
+    // that turns ccmp off turns the shield off — the browser draws the raw
+    // decoy text at full readability, and the page looks completely normal
+    // while serving every reader the wrong words. Nothing throws, nothing
+    // 404s, and the font-load guard is silent because the font loaded fine.
+    //
+    // <NonShield> sets exactly that rule (`"ccmp" 0` is how it renders real
+    // words through a shielded face at all), so a <Shield> nested inside a
+    // <NonShield> would inherit it. That is the concrete case; an author
+    // stylesheet doing the same thing is the general one. Declaring `normal`
+    // here re-enables the feature at the shielded element itself, where the
+    // inline style beats anything inherited.
+    //
+    // Verified against the shipped optik-a.woff2 by shaping with HarfBuzz:
+    // with ccmp on, "Read the docs" shapes to composites drawn from the
+    // letters "Reset" and "sellers"; with ccmp off it shapes to the plain
+    // letters. 11,962 of the 11,970 dictionary words behave that way.
+    fontFeatureSettings: "normal",
     ...(fontWeight !== undefined && { fontWeight }),
     ...(lineHeight !== undefined && { lineHeight }),
     ...(size !== undefined && { fontSize: size }),
@@ -2767,8 +3018,8 @@ export function Shield(props: ShieldProps) {
   // and stamp IDs into markup that has no use for them.
   // ---- RESOLVE THE THREE SWITCHES ----------------------------------------
   //
-  // `a11y` and `notice` are the 0.3.x spellings and still work; `screenReader`
-  // / `explain` / `copyPaste` are the ones that separate the three costs. Where
+  // `a11y` and `notice` are the 0.3.0 spellings and still work; `screenReader`
+  // / `wrapper` / `copyPaste` are the ones that separate the three costs. Where
   // both are given the NEW prop wins, because it is the more specific
   // statement of intent.
   //
@@ -2790,8 +3041,8 @@ export function Shield(props: ShieldProps) {
   //     -> rendered a seal AND a control despite the switch being off, and the
   //        block got no `id`, so the control pointed at nothing.
   //   notice:true + screenReader:false
-  //     -> silently no wrapper and no throw, because the guard tested `explain`
-  //        before `notice` had been folded into it.
+  //     -> silently no wrapper and no throw, because the guard tested the new
+  //        wrapper prop before `notice` had been folded into it.
   //
   // Deriving the config once and keying everything — guards, seal, render — off
   // that single value is what closes all three. Precedence is unchanged and is
@@ -2832,14 +3083,15 @@ export function Shield(props: ShieldProps) {
   // would give a screen reader two ways to do the same thing, one of which it
   // would announce as an unexplained extra button.
   // The same treatment for `copyPaste`, and for a stronger reason than
-  // `explain` has. A wrapper with no seal is a control that does nothing; copy
+  // `wrapper` has. A wrapper with no seal is a control that does nothing; copy
   // mediation with no seal is a control that does something WRONG — it takes a
   // reader's paste away and hands back a sentence pointing at a way out that
   // does not exist on this page. "Punishing the reader" was rejected once
   // already, and shipping it silently is how it would come back.
   //
   // Keyed on `usesPuzzle` — the single resolved config — rather than on the two
-  // spellings `explain` checks, so it fires for every way of saying "no seal".
+  // spellings the wrapper guard checks, so it fires for every way of saying
+  // "no seal".
   if (copyPaste !== undefined && copyPaste !== false && !usesPuzzle) {
     throw new Error(
       `${camo.logPrefix} <Shield> was given copyPaste with the accessible path turned off. ` +
@@ -2849,39 +3101,37 @@ export function Shield(props: ShieldProps) {
     );
   }
 
-  // THE DEFAULT IS THE WRAPPER. `explain` used to default to false and this
-  // line read `explain !== undefined ? explain : notice` — a bare <Shield>
-  // drew nothing, on the reasoning that the wrapper's plain English is the one
-  // thing setCamouflage() cannot hide and so should be opted into.
+  // THE WRAPPER IS DRAWN BY DEFAULT. It used to default to false and this line
+  // read `wrapper !== undefined ? wrapper : notice` — a bare <Shield> drew
+  // nothing, on the reasoning that the wrapper's plain English is the one thing
+  // setCamouflage() cannot hide and so should be opted into.
   //
   // That reasoning is still true and the trade has been made the other way,
-  // deliberately. The wrapper is now FULL, the recommended tier, because the
-  // three people this library keeps meeting — someone on a screen reader,
-  // someone using a custom reading face, someone reaching for a translator —
-  // cannot act on a control that was never drawn, and a page that silently
-  // gives them the wrong words is a page that failed them to inconvenience a
-  // crawler. The tiers below the default are all still one prop away, and the
-  // table in docs/plain-text-mode.md is what they cost.
+  // deliberately, because the three people this library keeps meeting — someone
+  // on a screen reader, someone using a custom reading face, someone reaching
+  // for a translator — cannot act on a control that was never drawn, and a page
+  // that silently gives them the wrong words is a page that failed them to
+  // inconvenience a crawler. `wrapper={false}` is one prop away and the doc
+  // comment on the prop says what it saves.
   //
-  // `notice` is the legacy spelling and still wins where it is passed.
+  // `notice` is the 0.3.0 spelling and still wins where it is passed.
   // Defaulting to `usesPuzzle`, NOT to `true`. The guard below throws when a
   // wrapper is asked for with no seal to open, and `true` would have made
-  // <Shield screenReader={false}> — the Sealed tier, a legitimate choice —
-  // throw on its own default. The tier with nothing to reveal draws nothing.
-  const explainProp =
-    explain !== undefined ? explain : notice !== undefined ? notice : usesPuzzle;
+  // <Shield screenReader={false}> — a legitimate choice — throw on its own
+  // default. A block with nothing to reveal draws nothing.
+  const wrapperProp = wrapper !== undefined ? wrapper : usesPuzzle;
 
   // FAIL LOUD on the combinations that cannot mean anything. Both are keyed on
   // `usesPuzzle` — the single resolved config — so they fire for every spelling
   // of "off" (screenReader:false, a11y:{mode:"none"}) and for every spelling of
-  // the thing being asked for (explain OR notice).
-  if (explainProp !== undefined && explainProp !== false && !usesPuzzle) {
+  // the thing being asked for.
+  if (wrapperProp !== undefined && wrapperProp !== false && !usesPuzzle) {
     throw new Error(
-      `${camo.logPrefix} <Shield> was given ${explain !== undefined ? "explain" : "notice"} ` +
+      `${camo.logPrefix} <Shield> was given wrapper ` +
         `(the visible wrapper) with the accessible path turned off. The wrapper's buttons ` +
         `open the sealed original, so without a seal there is nothing for them to do and no ` +
         `wrapper is drawn. Either remove screenReader={false} / a11y={{ mode: "none" }}, or ` +
-        `remove ${explain !== undefined ? "explain" : "notice"}.`,
+        `remove wrapper.`,
     );
   }
   // NO SECOND copyPaste GUARD HERE. There were two, with the same condition and
@@ -2895,34 +3145,37 @@ export function Shield(props: ShieldProps) {
   // between the halves, and the parsed DOM stops matching the server HTML —
   // a hydration mismatch on top of a broken layout.
   //
-  // This did not matter while `explain` was opt-in: nobody asks for a box round
-  // three words mid-sentence. It matters enormously as a default, because every
-  // <Shield as="span"> that already exists would get one without being changed.
-  // Inline blocks keep the clipped control, which is phrasing content and fits
-  // where they sit. Explicitly asking for `explain` on an inline tag throws
-  // below rather than being silently ignored.
+  // This did not matter while the wrapper was opt-in: nobody asks for a box
+  // round three words mid-sentence. It matters enormously as a default, because
+  // every <Shield as="span"> that already exists would get one without being
+  // changed. Inline blocks keep the clipped control, which is phrasing content
+  // and fits where they sit. Explicitly asking for `wrapper` on an inline tag
+  // throws below rather than being silently ignored.
+  //
+  // SO `wrapper` IS THE ONE SWITCH WHOSE DEFAULT IS NOT SIMPLY "ON": it is on
+  // wherever a seal exists AND the tag is block-level. Both exceptions render
+  // no wrapper rather than throwing, because both are reachable by a <Shield>
+  // nobody edited.
   const inlineTag = typeof as === "string" && INLINE_TAGS.has(as);
-  if (inlineTag && explain !== undefined && explain !== false) {
+  if (inlineTag && wrapper !== undefined && wrapper !== false) {
     throw new Error(
-      `${camo.logPrefix} <Shield as="${as}"> cannot draw the explanation wrapper. ` +
+      `${camo.logPrefix} <Shield as="${as}"> cannot draw the visible wrapper. ` +
         `The wrapper is a block-level box — a <div> with strips and buttons — and putting ` +
         `one inside a paragraph splits the sentence around it and breaks hydration. Use a ` +
-        `block tag, or drop explain to keep the off-screen control this tag already has.`,
+        `block tag, or drop wrapper to keep the off-screen control this tag already has.`,
     );
   }
   const wantsNotice =
-    !inlineTag && explainProp !== undefined && explainProp !== false && usesPuzzle;
+    !inlineTag && wrapperProp !== undefined && wrapperProp !== false && usesPuzzle;
   const cfg = wantsNotice
-    ? resolveNotice(explainProp === true ? {} : (explainProp as ShieldNotice))
+    ? resolveNotice(wrapperProp === true ? {} : (wrapperProp as ShieldNotice))
     : null;
   // COPY MEDIATION IS INDEPENDENT OF THE WRAPPER, and defaults on wherever
-  // there is a seal. It used to follow `explain` — `: wantsNotice` — which
-  // made `explain={false}` quietly drop the clipboard notice as well, so the
-  // tier called INVISIBLE was really MINIMAL and nobody could ask for the
-  // middle rung. Writing the tier table in docs/plain-text-mode.md is what
-  // surfaced it.
+  // there is a seal. It used to follow the wrapper — `: wantsNotice` — which
+  // made turning the wrapper off quietly drop the clipboard notice as well, so
+  // there was no way to ask for copy mediation on an undrawn block at all.
   //
-  // Following `explain` was also backwards on the merits. A selection that
+  // Following the wrapper was also backwards on the merits. A selection that
   // lands fluent, grammatical, WRONG English in someone's notes costs a human
   // something and costs a crawler nothing — it is the one behaviour in this
   // library that deters no bot at all. It should not be switched off as a side
@@ -2930,7 +3183,7 @@ export function Shield(props: ShieldProps) {
   // ---- THE FOUR SETTINGS THE WRAPPER CANNOT HONOUR ------------------------
   //
   // `reveal`, `visualHidden`, `label` and `note` are read by renderA11y and
-  // renderPuzzle, and those run only on the tiers with NO drawn wrapper. Since
+  // renderPuzzle, and those run only where NO wrapper is drawn. Since
   // 0.3.2 the wrapper is the default, so a page that set any of them and
   // changed nothing else got them silently ignored on upgrade: no error, no
   // warning, no visible difference until somebody noticed the behaviour they
@@ -2948,7 +3201,7 @@ export function Shield(props: ShieldProps) {
   // invented meaning is a worse trap than an error.
   //
   // `note` is the one real loss: it renamed the sentence, and the wrapper has a
-  // sentence. The upgrade path is one word — `explain: { text }` — and the
+  // sentence. The upgrade path is one word — `wrapper: { text }` — and the
   // message below says so rather than making the author go and find it.
   //
   // The alternative was to accept them and map them across. It was rejected on
@@ -2961,8 +3214,8 @@ export function Shield(props: ShieldProps) {
     if (inert.length) {
       const fix =
         inert.length === 1 && inert[0] === "note"
-          ? `Move it to explain={{ text: … }}.`
-          : `Move any wording to explain={{ text: … }}, and use explain={false} ` +
+          ? `Move it to wrapper={{ text: … }}.`
+          : `Move any wording to wrapper={{ text: … }}, and use wrapper={false} ` +
             `if you want the off-screen control these settings were written for.`;
       const one = inert.length === 1;
       throw new Error(
@@ -3055,18 +3308,8 @@ export function Shield(props: ShieldProps) {
   // waits no longer than before. See decoys.ts for what this buys and — more
   // importantly — for the version of it that is broken (the same text under
   // three mappings, which a majority vote cracks).
-  //
-  // Seeded on the camouflage attribute, which is per project: two sites must
-  // not draw the same decoys, or one afternoon's work yields a list of known
-  // decoy ciphertexts good against everybody.
   const sealed = wantsNotice
-    ? sealWithDecoys(
-        children,
-        mapping,
-        srSeconds ?? DEFAULT_SECONDS,
-        camo.attrName,
-        blockId,
-      )
+    ? sealWithDecoys(children, mapping, srSeconds ?? DEFAULT_SECONDS, blockId)
     : null;
 
   if (wantsNotice && cfg) {
@@ -3240,7 +3483,14 @@ export function Shield(props: ShieldProps) {
             }}
           />
         ) : null}
-        <div {...frameAttrs}>
+        {/*
+          `className` here is the WRAPPER's, from `wrapper={{ className }}`, and
+          deliberately not the component-level `className` — that one is the
+          text block's and is applied to <Tag> and <Out> below. See the field's
+          doc comment in notice.ts for why widening the component-level one
+          would have broken existing stylesheets on upgrade.
+        */}
+        <div {...frameAttrs} className={cfg.className}>
           <NoticeStrip
             where="top"
             firstOnPage={firstOnPage}

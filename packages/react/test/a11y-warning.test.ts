@@ -90,8 +90,8 @@ describe("opting out of the accessible alternative", () => {
     // opt-out, and the test above asserts it warns.
     Shield({ children: BODY, a11y: { mode: "text" } });
     Shield({ children: BODY, a11y: { mode: "text", seconds: 5 } });
-    Shield({ children: BODY, explain: false, a11y: { mode: "text", note: "Uncover it below." } });
-    Shield({ children: BODY, explain: false, a11y: { mode: "text", visualHidden: false } });
+    Shield({ children: BODY, wrapper: false, a11y: { mode: "text", note: "Uncover it below." } });
+    Shield({ children: BODY, wrapper: false, a11y: { mode: "text", visualHidden: false } });
 
     expect(warn).not.toHaveBeenCalled();
   });

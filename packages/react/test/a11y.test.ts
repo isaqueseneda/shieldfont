@@ -14,9 +14,9 @@
  * it reads for free. It is gone, and the test is the guard against it coming
  * back by accident.
  *
- * Every fixture below runs the CLIPPED tier — `explain: false` plus
- * `{ mode: "text" }` — because that is the tier `renderA11y` builds. The drawn
- * wrapper is the default and has its own suite further down.
+ * Every fixture below passes `wrapper: false` plus `{ mode: "text" }`, because
+ * the clipped off-screen control is what `renderA11y` builds. The drawn wrapper
+ * is the default and has its own suite further down.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Shield, withShieldRenderPass, type ShieldA11y } from "../src/Shield.js";
@@ -67,7 +67,7 @@ function exposed(node: unknown): ReactElement[] {
 
 /** A block with the drawn notice, the configuration the demo ships. */
 const noticed = (over: Record<string, unknown> = {}) =>
-  Shield({ children: BODY, as: "p", explain: { position: "both" }, ...over } as never);
+  Shield({ children: BODY, as: "p", wrapper: { position: "both" }, ...over } as never);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -80,13 +80,13 @@ describe("aria-hidden stays on the encoded block", () => {
       { mode: "text" } as const,
       { mode: "text", note: "Uncover the words below." } as const,
     ]) {
-      const block = shieldedBlock(Shield({ children: BODY, explain: false, a11y }));
+      const block = shieldedBlock(Shield({ children: BODY, wrapper: false, a11y }));
       expect(props(block)["aria-hidden"]).toBe("true");
     }
   });
 
   it("never puts the alternative inside the hidden subtree", () => {
-    const tree = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const block = shieldedBlock(tree);
     const inside = descendants(block);
     expect(inside.some((el) => el.type === "button")).toBe(false);
@@ -96,7 +96,7 @@ describe("aria-hidden stays on the encoded block", () => {
   });
 
   it("puts the alternative BEFORE the hidden block in DOM order", () => {
-    const tree = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     // walkDeep, not walkAll: the button lives inside a subcomponent, and
     // walkAll stops at function components and silently finds nothing.
     const order = walkDeep(tree);
@@ -122,7 +122,7 @@ describe("renders no link, ever", () => {
       { mode: "text", visualHidden: true } as const,
       { mode: "text", reveal: "visible" } as const,
     ]) {
-      const tree = Shield({ children: BODY, explain: false, a11y });
+      const tree = Shield({ children: BODY, wrapper: false, a11y });
       expect(findAllTags(tree, "a")).toHaveLength(0);
     }
     // ...including with no `a11y` at all (which warns; silence it here).
@@ -142,7 +142,7 @@ describe("renders no link, ever", () => {
       href: "/plain/post-1.txt",
       transcript: "/t.txt",
     } as unknown as ShieldA11y;
-    const tree = Shield({ children: BODY, explain: false, a11y: stale });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: stale });
     expect(findAllTags(tree, "a")).toHaveLength(0);
     expect(JSON.stringify(tree)).not.toContain("/t.txt");
     expect(JSON.stringify(tree)).not.toContain("/plain/post-1.txt");
@@ -158,7 +158,7 @@ describe("renders no link, ever", () => {
     // resurrect it for a plain-JS caller who has not upgraded — no <audio>
     // element, and the URL they passed never reaches the markup.
     const retired = { mode: "audio", src: "/audio/post-1.mp3" } as unknown as ShieldA11y;
-    const tree = Shield({ children: BODY, explain: false, a11y: retired });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: retired });
     expect(findTag(tree, "audio")).toBeUndefined();
     expect(JSON.stringify(tree)).not.toContain("/audio/post-1.mp3");
   });
@@ -183,7 +183,7 @@ describe("visualHidden", () => {
       { mode: "text", visualHidden: true } as const,
       { mode: "text", note: "Uncover the words below.", visualHidden: true } as const,
     ]) {
-      const tree = Shield({ children: BODY, explain: false, a11y });
+      const tree = Shield({ children: BODY, wrapper: false, a11y });
       const wrap = walkAll(tree).find((el) => String(props(el).className ?? "").endsWith("-alt"));
       expect(wrap).toBeDefined();
       const style = props(wrap!).style as CSSProperties;
@@ -202,14 +202,14 @@ describe("visualHidden", () => {
     // the block through the font, so the control is screen-reader-only unless
     // asked for. `false` must leave NO style behind at all — an empty style
     // object here would be a clip that stopped clipping without anyone noticing.
-    const hidden = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const hidden = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const alt = (t: unknown) =>
       walkAll(t).find((el) => String(props(el).className ?? "").endsWith("-alt"));
     expect((props(alt(hidden)!).style as CSSProperties).clipPath).toBe("inset(50%)");
 
     const shown = Shield({
       children: BODY,
-      explain: false,
+      wrapper: false,
       a11y: { mode: "text", visualHidden: false },
     });
     expect(props(alt(shown)!).style).toBeUndefined();
@@ -218,7 +218,7 @@ describe("visualHidden", () => {
 
 describe("markup validity", () => {
   it("wraps in a div/p for block Shields", () => {
-    const tree = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const wrap = walkAll(tree).find((el) => String(props(el).className ?? "").endsWith("-alt"));
     expect(wrap!.type).toBe("div");
     expect(findTag(tree, "p")).toBeDefined();
@@ -227,7 +227,7 @@ describe("markup validity", () => {
   it("uses phrasing content for an inline Shield, so it cannot split a <p>", () => {
     // A <div>/<p> sibling emitted next to an inline <Shield as="span"> inside a
     // paragraph makes the browser close the enclosing <p> early.
-    const tree = Shield({ as: "span", children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ as: "span", children: BODY, wrapper: false, a11y: { mode: "text" } });
     const wrap = walkAll(tree).find((el) => String(props(el).className ?? "").endsWith("-alt"));
     expect(wrap!.type).toBe("span");
     expect(findTag(tree, "div")).toBeUndefined();
@@ -240,7 +240,7 @@ describe("markup validity", () => {
     // VoiceOver session: it announced the group, then that you were "inside of
     // a group", then how to exit the group — before a control that already
     // named itself. A note and a button read fine as plain siblings.
-    const tree = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const wrap = walkAll(tree).find((el) => String(props(el).className ?? "").endsWith("-alt"));
     expect(wrap).toBeDefined();
     // `presentation` takes the wrapper itself out of the accessibility tree.
@@ -251,7 +251,7 @@ describe("markup validity", () => {
 });
 
 /**
- * The drawn notice (`explain`), from the ear outward.
+ * The drawn notice (`wrapper`), from the ear outward.
  *
  * Everything below was written after walking one protected block the way a
  * screen-reader user does — linearly, then by form control — and then verified
@@ -275,7 +275,7 @@ describe("settings the wrapper cannot honour fail loudly", () => {
     it(`allows a11y.${key} when the wrapper is off`, () => {
       const value = key === "visualHidden" ? false : key === "reveal" ? "visible" : "x";
       expect(() =>
-        Shield({ children: BODY, explain: false, a11y: { mode: "text", [key]: value } } as never),
+        Shield({ children: BODY, wrapper: false, a11y: { mode: "text", [key]: value } } as never),
       ).not.toThrow();
     });
   }
@@ -292,7 +292,7 @@ describe("settings the wrapper cannot honour fail loudly", () => {
   it("points at the replacement rather than only refusing", () => {
     expect(() =>
       Shield({ children: BODY, a11y: { mode: "text", note: "x" } } as never),
-    ).toThrow(/explain=\{\{ text/);
+    ).toThrow(/wrapper=\{\{ text/);
   });
 
   it("leaves the fields the wrapper DOES honour alone", () => {
@@ -304,18 +304,23 @@ describe("settings the wrapper cannot honour fail loudly", () => {
   });
 });
 
-describe("the four tiers, and which one a bare <Shield> is", () => {
-  // These pin the DEFAULT. Nothing else in the suite does: every other test
-  // passes the switch it cares about, so the day the default moved from
-  // INVISIBLE to FULL, 22 tests failed for the right reason and none of them
-  // was actually asserting what a bare <Shield> renders. That is the assertion
-  // that matters most, because it is the one every consumer gets without
-  // asking for anything.
+describe("the three switches, and what a bare <Shield> does with them", () => {
+  // These pin the DEFAULTS. Nothing else in the suite does: every other test
+  // passes the switch it cares about, so the day the wrapper default moved from
+  // off to on, 22 tests failed for the right reason and none of them was
+  // actually asserting what a bare <Shield> renders. That is the assertion that
+  // matters most, because it is the one every consumer gets without asking for
+  // anything.
+  //
+  // There are no names here for combinations of the three. There used to be
+  // four (FULL / INVISIBLE / MINIMAL / SEALED SHUT) and they were deleted: a
+  // test titled with an invented name says less about what broke than one
+  // titled with the props that were passed.
   const A = "data-typeface";
   const frames = (t: ReturnType<typeof Shield>) => byAttrAll(t, `${A}-frame`);
   const clipped = (t: ReturnType<typeof Shield>) => byAttrAll(t, `${A}-group`);
 
-  it("FULL — a bare <Shield> draws the wrapper", () => {
+  it("a bare <Shield> draws the wrapper", () => {
     const t = Shield({ children: BODY });
     expect(frames(t)).toHaveLength(1);
     // And the sentence a reader can see is really in the markup, not just an
@@ -326,33 +331,82 @@ describe("the four tiers, and which one a bare <Shield> is", () => {
     expect(said).toBe(true);
   });
 
-  it("INVISIBLE — explain={false} keeps the control and drops the box", () => {
-    const t = Shield({ children: BODY, explain: false } as never);
+  it("a bare <Shield> seals the words and mediates copy", () => {
+    // The other two defaults, asserted beside the first, so all three "on by
+    // default" claims in the prop docs have one test between them. Copy
+    // mediation is read off the frame rather than off the block: with the
+    // wrapper drawn the notice script owns the listener, and `-guard` is the
+    // flag it reads.
+    const t = Shield({ children: BODY });
+    expect(byAttrAll(t, `${A}-data`).length).toBeGreaterThan(0);
+    expect(props(frames(t)[0]!)[`${A}-guard`]).toBe("1");
+  });
+
+  it("wrapper={false} keeps the control and drops the box", () => {
+    const t = Shield({ children: BODY, wrapper: false } as never);
     expect(frames(t)).toHaveLength(0);
     expect(clipped(t)).toHaveLength(1);
   });
 
-  it("MINIMAL — copyPaste={false} also drops the clipboard sentence", () => {
-    const t = Shield({ children: BODY, explain: false, copyPaste: false } as never);
+  it("copyPaste={false} also drops the clipboard sentence", () => {
+    const t = Shield({ children: BODY, wrapper: false, copyPaste: false } as never);
     expect(frames(t)).toHaveLength(0);
     expect(clipped(t)).toHaveLength(1);
     expect(props(shieldedBlock(t))[`${A}-clip-say`]).toBeUndefined();
   });
 
-  it("SEALED SHUT — screenReader={false} draws nothing and seals nothing", () => {
+  it("screenReader={false} draws nothing and seals nothing", () => {
     const t = Shield({ children: BODY, screenReader: false } as never);
     expect(frames(t)).toHaveLength(0);
     expect(clipped(t)).toHaveLength(0);
     expect(byAttrAll(t, `${A}-data`)).toHaveLength(0);
   });
 
-  it("SEALED SHUT does not throw on its own default", () => {
-    // `explain` defaults to on, and the guard throws when a wrapper is asked
+  it("screenReader={false} does not throw on the other two defaults", () => {
+    // `wrapper` defaults to on, and the guard throws when a wrapper is asked
     // for with no seal behind it. Defaulting to `true` rather than to "on if
-    // there is a seal" made the one tier that turns the seal off throw on the
-    // props that define it. Caught by a11y-warning.test.ts at the time; pinned
-    // here because this is where the tiers are described.
+    // there is a seal" made the one configuration that turns the seal off throw
+    // on the prop that defines it. Caught by a11y-warning.test.ts at the time;
+    // pinned here because this is where the defaults are described.
     expect(() => Shield({ children: BODY, screenReader: false } as never)).not.toThrow();
+  });
+
+  it("wrapper={{ className }} styles the box and nothing else", () => {
+    // TWO HOOKS, TWO ELEMENTS. The complaint that produced this was that the
+    // Uncover button is unstyleable on a dark host page; the risk in fixing it
+    // was widening `<Shield className>` to cover the wrapper, which would have
+    // silently applied every existing text rule to the box on upgrade. So the
+    // assertion is BOTH halves: the new hook reaches the frame, and the old one
+    // still lands exactly where it always did.
+    const t = Shield({
+      children: BODY,
+      className: "prose",
+      wrapper: { className: "my-box" },
+    } as never);
+    expect(props(frames(t)[0]!).className).toBe("my-box");
+    expect(props(shieldedBlock(t)).className).toBe("prose");
+    const out = byAttrAll(t, `${A}-out`)[0]!;
+    expect(props(out).className).toBe("prose");
+  });
+
+  it("emits no class attribute when nobody asked for one", () => {
+    // `className=""` would be a byte of signature on every wrapper on the page
+    // for a feature almost nobody uses. resolveNotice leaves it undefined.
+    const t = Shield({ children: BODY });
+    expect(props(frames(t)[0]!).className).toBeUndefined();
+  });
+
+  it("`explain` is dead, and says so by name", () => {
+    // NOT A SILENT ALIAS. `explain` was the 0.3.2 name for `wrapper`, and a
+    // component that quietly forwarded it would leave two spellings of one prop
+    // alive in every codebase that used the old one. The generic unknown-prop
+    // throw would fire on it anyway; what this pins is that the message names
+    // the successor rather than reciting the whole accepted-props list.
+    expect(() => Shield({ children: BODY, explain: false } as never)).toThrow(/wrapper/);
+    expect(() => Shield({ children: BODY, explain: false } as never)).toThrow(/explain/);
+    // Including when the value would have been the default anyway: a rename is
+    // not conditional on the value being interesting.
+    expect(() => Shield({ children: BODY, explain: true } as never)).toThrow(/renamed/);
   });
 });
 
@@ -362,7 +416,7 @@ describe("the drawn notice — what a listener is handed", () => {
   it("lets the group name be renamed and translated", () => {
     // The old short shape is one prop away, and still the escape hatch for
     // anyone who finds the disclaimer too long to hear per block.
-    const t = noticed({ explain: { labels: { group: "Texto protegido" } } });
+    const t = noticed({ wrapper: { labels: { group: "Texto protegido" } } });
     expect(props(byAttr(t, `${A}-frame`))["aria-label"]).toBe("Texto protegido, paragraph 1");
   });
 
@@ -389,8 +443,8 @@ describe("the drawn notice — what a listener is handed", () => {
     // useless for these controls — every row ending in the same four words,
     // and the list filters from the start of the string.
     const trees = withShieldRenderPass(() => [
-      Shield({ children: BODY, as: "h2", explain: true } as never),
-      Shield({ children: `${BODY} 2`, as: "p", explain: true } as never),
+      Shield({ children: BODY, as: "h2", wrapper: true } as never),
+      Shield({ children: `${BODY} 2`, as: "p", wrapper: true } as never),
     ]);
     expect(byAttrAll(trees[0], `${A}-act`)).toHaveLength(2);
     for (const t of trees) {
@@ -413,7 +467,7 @@ describe("the drawn notice — what a listener is handed", () => {
   it("keeps the visible label at the FRONT of the accessible name (SC 2.5.3)", () => {
     // Label in Name. A speech-input user says "click Original text"; if the
     // accessible name did not contain the visible words, nothing would happen.
-    const t = noticed({ explain: { labels: { show: "Ver o texto" } } });
+    const t = noticed({ wrapper: { labels: { show: "Ver o texto" } } });
     for (const b of byAttrAll(t, `${A}-act`)) {
       const label = props(b)["aria-label"] as string;
       const span = descendants(b).find((e) => e.type === "span");
@@ -582,7 +636,7 @@ describe("the drawn notice — the emitted script", () => {
 
 describe("still encodes", () => {
   it("leaves the shielded text encoded regardless of the a11y mode", () => {
-    const tree = Shield({ children: BODY, explain: false, a11y: { mode: "text" } });
+    const tree = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const encoded = props(shieldedBlock(tree)).children as string;
     expect(typeof encoded).toBe("string");
     expect(encoded).not.toBe(BODY);
@@ -590,7 +644,7 @@ describe("still encodes", () => {
     expect(JSON.stringify(walkAll(tree))).not.toContain(BODY);
   });
   const drawn = (extra: Record<string, unknown> = {}) =>
-    Shield({ children: BODY, explain: true, ...extra });
+    Shield({ children: BODY, wrapper: true, ...extra });
   const frame = (t: ReturnType<typeof Shield>) =>
     walkDeep(t).find((e) => Object.keys(props(e)).some((k) => k.endsWith("-frame")))!;
 
@@ -658,7 +712,7 @@ describe("still encodes", () => {
   });
 
   it("names the frame when an author asks for one", () => {
-    const t = Shield({ children: BODY, explain: { labels: { group: "Sealed" } } } as never);
+    const t = Shield({ children: BODY, wrapper: { labels: { group: "Sealed" } } } as never);
     const name = String(props(frame(t))["aria-label"]);
     expect(name).toContain("Sealed");
     // Still carries the ordinal, so two named blocks do not sound alike.
@@ -672,14 +726,14 @@ describe("still encodes", () => {
     // specifically when they cannot read any of them. Once open, the words
     // themselves distinguish them.
     const page = withShieldRenderPass(() => [
-      Shield({ children: BODY + " one", explain: true }),
-      Shield({ children: BODY + " two", explain: true }),
+      Shield({ children: BODY + " one", wrapper: true }),
+      Shield({ children: BODY + " two", wrapper: true }),
     ]);
     expect(page.map((t) => props(frame(t))["aria-label"])).toEqual([undefined, undefined]);
   });
 
   it("keeps the trailing strip's prose out of the tree, so nothing repeats", () => {
-    const t = drawn({ explain: { position: "both" } });
+    const t = drawn({ wrapper: { position: "both" } });
     const said = walkDeep(t).filter((e) =>
       Object.keys(props(e)).some((k) => k.endsWith("-say-full")),
     );

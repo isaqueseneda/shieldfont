@@ -14,6 +14,7 @@
  * by breaking the other is the failure mode worth catching.
  */
 import { describe, it, expect } from "vitest";
+import type { ReactElement } from "react";
 import { Shield, setCamouflage, withShieldRenderPass } from "../src/Shield.js";
 import { solveText, type SealedText } from "@shieldfont/core/puzzle";
 import {
@@ -31,15 +32,15 @@ const BODY = "The future of writing belongs to those who write it.";
 const FAST = { mode: "text", seconds: 5 } as const;
 
 /**
- * The wrapperless tier, named. Every test in this file is about the CLIPPED
+ * No wrapper, spelled once. Every test in this file is about the CLIPPED
  * control — the one that is real and focusable and nowhere on screen — and a
- * bare <Shield> no longer renders it: since the default became the drawn
- * wrapper, `explain` has to be turned off to get this tier at all. Spelled once
- * here rather than at twenty-two call sites, and spelled deliberately: a test
- * that says which tier it is testing is a test that will still be right the
+ * bare <Shield> no longer renders it: since the wrapper became the default,
+ * `wrapper: false` is what it takes to get the clipped control at all. Spelled
+ * here rather than at twenty-two call sites, and spelled explicitly: a test
+ * that names the switch it depends on is a test that will still be right the
  * next time a default moves.
  */
-const INVISIBLE = { a11y: FAST, explain: false } as const;
+const CLIPPED = { a11y: FAST, wrapper: false } as const;
 
 /** The one element carrying a given bare data attribute. */
 function byAttr(tree: unknown, attr: string) {
@@ -51,14 +52,26 @@ function markup(tree: unknown): string {
   return JSON.stringify(tree);
 }
 
+/**
+ * The note's sentence.
+ *
+ * It moved from a string child to `dangerouslySetInnerHTML` so the emitted
+ * solver can swap it for the open-state sentence without React reconciling it
+ * back. Read it the way it now ships, not the way it used to.
+ */
+function noteText(el: ReactElement): string {
+  const html = props(el).dangerouslySetInnerHTML as { __html?: string } | undefined;
+  return html?.__html ?? String(props(el).children ?? "");
+}
+
 describe("the encoded block stays hidden", () => {
   it("is aria-hidden even when the puzzle control is present", () => {
-    const tree = Shield({ children: BODY, ...INVISIBLE });
+    const tree = Shield({ children: BODY, ...CLIPPED });
     expect(props(shieldedBlock(tree))["aria-hidden"]).toBe("true");
   });
 
   it("puts the control OUTSIDE the hidden block and BEFORE it in DOM order", () => {
-    const tree = Shield({ children: BODY, ...INVISIBLE });
+    const tree = Shield({ children: BODY, ...CLIPPED });
     const all = walkAll(tree);
     const block = shieldedBlock(tree);
     const button = findAllTags(tree, "button")[0];
@@ -74,7 +87,7 @@ describe("the encoded block stays hidden", () => {
     // The removed 0.2.0 text mode was an <a href> to the original words. The
     // replacement must not quietly reintroduce one.
     for (const a11y of [FAST, { mode: "text" } as const, { mode: "text", seconds: 28 } as const]) {
-      expect(findAllTags(Shield({ children: BODY, explain: false, a11y }), "a")).toHaveLength(0);
+      expect(findAllTags(Shield({ children: BODY, wrapper: false, a11y }), "a")).toHaveLength(0);
     }
   });
 });
@@ -82,7 +95,7 @@ describe("the encoded block stays hidden", () => {
 describe("the plaintext does not ship", () => {
   /** The sealed JSON as it would reach the browser. */
   function payload(children: string): string {
-    const holder = byAttr(Shield({ children, ...INVISIBLE }), "data-typeface-data");
+    const holder = byAttr(Shield({ children, ...CLIPPED }), "data-typeface-data");
     return (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
   }
 
@@ -119,7 +132,7 @@ describe("the plaintext does not ship", () => {
     // the cheapest attack on this path, and one script does it to every site
     // using the library — costs four times as much with nothing to say which
     // one matters. See src/decoys.ts.
-    const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
+    const holder = byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-data");
     expect(holder).toBeDefined();
     const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
     const payloads = JSON.parse(json);
@@ -137,7 +150,7 @@ describe("the plaintext does not ship", () => {
     // The property that matters, asserted by actually SOLVING every payload the
     // way a bulk attacker would: pull the sealed blobs out of the HTML and
     // grind them natively, no browser, no button.
-    const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
+    const holder = byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-data");
     const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
     const payloads = JSON.parse(json) as SealedText[];
 
@@ -178,14 +191,14 @@ describe("the plaintext does not ship", () => {
   });
 
   it("escapes < in the payload so a future field cannot inject markup", () => {
-    const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
+    const holder = byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-data");
     const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
     expect(json).not.toContain("<");
   });
 
   it("seals fresh every render, so identical text is not a shared puzzle", () => {
     const read = () => {
-      const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
+      const holder = byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-data");
       return (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
     };
     expect(read()).not.toBe(read());
@@ -193,7 +206,7 @@ describe("the plaintext does not ship", () => {
 });
 
 describe("the control is usable by a screen reader", () => {
-  const tree = () => Shield({ children: BODY, ...INVISIBLE });
+  const tree = () => Shield({ children: BODY, ...CLIPPED });
 
   it("wraps the alternative WITHOUT a group role or label", () => {
     // Measured against real VoiceOver, `role="group"` + `aria-label` produced
@@ -210,7 +223,7 @@ describe("the control is usable by a screen reader", () => {
   });
 
   it("explains WHY the section is silent, in a sentence", () => {
-    const note = String(props(findAllTags(tree(), "p")[0]!).children);
+    const note = noteText(findAllTags(tree(), "p")[0]!);
     // Long enough to explain, short enough not to be an obstacle. The upper
     // bound moved from 120 to 200 when the note stopped saying "is not read
     // aloud" — that phrasing assumed everyone using assistive technology is
@@ -270,8 +283,8 @@ describe("the control is usable by a screen reader", () => {
     // the button does not have — and the ordinal was only ever there to tell
     // several identical buttons apart.
     const page = withShieldRenderPass(() => [
-      Shield({ children: BODY + " one", explain: false, a11y: { mode: "text" }, as: "h2" }),
-      Shield({ children: BODY + " two", explain: false, a11y: { mode: "text" }, as: "p" }),
+      Shield({ children: BODY + " one", wrapper: false, a11y: { mode: "text" }, as: "h2" }),
+      Shield({ children: BODY + " two", wrapper: false, a11y: { mode: "text" }, as: "p" }),
     ]);
     const names = page.map((t) =>
       String(props(findAllTags(t, "button")[0]!)["aria-label"]),
@@ -289,7 +302,7 @@ describe("the control is usable by a screen reader", () => {
     // to say "Unlock the plain text for paragraph 2" and "Get text" — a reader
     // who learned one met the other on the next block.
     const clipped = String(
-      props(findAllTags(Shield({ children: BODY, explain: false, a11y: { mode: "text" } }), "button")[0]!)["aria-label"],
+      props(findAllTags(Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } }), "button")[0]!)["aria-label"],
     );
     expect(clipped).toContain("Uncover the original text");
   });
@@ -307,7 +320,7 @@ describe("the control is usable by a screen reader", () => {
     // the same free bypass the removed href was.
     const secret = "Zarquon threadbare pomegranate ossuary.";
     const label = String(
-      props(findAllTags(Shield({ children: secret, ...INVISIBLE }), "button")[0]!).children,
+      props(findAllTags(Shield({ children: secret, ...CLIPPED }), "button")[0]!).children,
     );
     for (const w of ["Zarquon", "threadbare", "pomegranate", "ossuary"]) {
       expect(label.toLowerCase()).not.toContain(w.toLowerCase());
@@ -315,7 +328,7 @@ describe("the control is usable by a screen reader", () => {
   });
 
   it("honours an explicit label override", () => {
-    const t = Shield({ children: BODY, explain: false, a11y: { ...FAST, label: "Read this bit plainly" } });
+    const t = Shield({ children: BODY, wrapper: false, a11y: { ...FAST, label: "Read this bit plainly" } });
     expect(visibleText(findAllTags(t, "button")[0]!)).toBe("Read this bit plainly");
   });
 
@@ -323,14 +336,14 @@ describe("the control is usable by a screen reader", () => {
     // The full explanation is worth hearing once. Six times, before reaching any
     // content, it is an obstacle.
     const trees = withShieldRenderPass(() =>
-      [1, 2, 3].map((i) => Shield({ children: `${BODY} ${i}`, ...INVISIBLE })),
+      [1, 2, 3].map((i) => Shield({ children: `${BODY} ${i}`, ...CLIPPED })),
     );
     // Found by ROLE, not by a word in the sentence. This used to grep for
     // "crambled", which broke the day the default wording changed and did not
     // contain it any more — the test was pinned to the copy rather than to the
     // structure it exists to check.
     const notes = trees.map((t) =>
-      String(props(walkDeep(t).find((e) => props(e).role === "note")!).children),
+      noteText(walkDeep(t).find((e) => props(e).role === "note")!),
     );
     expect(notes[0].length).toBeGreaterThan(notes[1].length);
     expect(notes[1]).toBe(notes[2]);
@@ -339,7 +352,7 @@ describe("the control is usable by a screen reader", () => {
   });
 
   it("clips the revealed text off-screen by default, never removing it", () => {
-    const out = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-out");
+    const out = byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-out");
     const style = props(out!).style as Record<string, unknown>;
     // display:none and visibility:hidden would both drop the words out of the
     // accessibility tree, which is the entire thing being delivered. The
@@ -353,7 +366,7 @@ describe("the control is usable by a screen reader", () => {
 
   it("can be told to reveal visibly instead", () => {
     const out = byAttr(
-      Shield({ children: BODY, explain: false, a11y: { ...FAST, reveal: "visible" } }),
+      Shield({ children: BODY, wrapper: false, a11y: { ...FAST, reveal: "visible" } }),
       "data-typeface-out",
     );
     const style = props(out!).style as Record<string, unknown>;
@@ -370,7 +383,7 @@ describe("the control is usable by a screen reader", () => {
     // That is true of VoiceOver — the only screen reader this path had ever
     // been tested against — and false of NVDA, which ships "Progress bar
     // output: Beep" enabled by default and plays a rising tone on every value
-    // change. The solver drives ~200 of them across a 5-20 second wait, so the
+    // change. The solver drives ~200 of them across a few-second wait, so the
     // old contract bought one reader an on-demand query and charged another
     // twenty seconds of beeping over the live region explaining the wait.
     //
@@ -404,14 +417,14 @@ describe("the control is usable by a screen reader", () => {
   it("hides the whole control from sighted readers by default", () => {
     // A sighted reader can already read the block — the font does that — so an
     // unexplained widget attached to text that looks fine is noise to them.
-    const style = props(byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-group")!)
+    const style = props(byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-group")!)
       .style as Record<string, unknown>;
     expect(style.clipPath).toBe("inset(50%)");
     // ...and `visualHidden: false` is the way back on screen, for anyone who
     // needs the focus indicator a clipped control takes away.
     const shown = props(
       byAttr(
-        Shield({ children: BODY, explain: false, a11y: { ...FAST, visualHidden: false } }),
+        Shield({ children: BODY, wrapper: false, a11y: { ...FAST, visualHidden: false } }),
         "data-typeface-group",
       )!,
     ).style;
@@ -419,7 +432,7 @@ describe("the control is usable by a screen reader", () => {
   });
 
   it("honours visualHidden by clipping, never by display:none", () => {
-    const t = Shield({ children: BODY, explain: false, a11y: { ...FAST, visualHidden: true } });
+    const t = Shield({ children: BODY, wrapper: false, a11y: { ...FAST, visualHidden: true } });
     const group = byAttr(t, "data-typeface-group")!;
     const style = props(group).style as Record<string, unknown>;
     // display:none would remove the control from the accessibility tree, which
@@ -431,7 +444,7 @@ describe("the control is usable by a screen reader", () => {
   it("uses phrasing-content wrappers for an inline shield", () => {
     // A <p> or <div> sibling next to an inline <Shield as="span"> would close
     // the enclosing paragraph early and reflow the document.
-    const t = Shield({ children: BODY, as: "span", ...INVISIBLE });
+    const t = Shield({ children: BODY, as: "span", ...CLIPPED });
     for (const el of walkAll(t)) {
       expect(el.type).not.toBe("p");
       expect(el.type).not.toBe("div");
@@ -454,8 +467,8 @@ describe("page-level wiring", () => {
     // Same string hashes the same, so without the pass counter both buttons
     // would address one block and the other would never be hidden.
     const trees = withShieldRenderPass(() => [
-      Shield({ children: BODY, ...INVISIBLE }),
-      Shield({ children: BODY, ...INVISIBLE }),
+      Shield({ children: BODY, ...CLIPPED }),
+      Shield({ children: BODY, ...CLIPPED }),
     ]);
     const ids = trees.map((t) => props(shieldedBlock(t)).id);
     expect(ids[0]).toBeTruthy();
@@ -468,7 +481,7 @@ describe("page-level wiring", () => {
     // may leave a block id or a solver script behind for a control that is not
     // there — the id in particular is a signature bought for nothing.
     for (const off of [{ a11y: { mode: "none" } as const }, { screenReader: false }]) {
-      const t = Shield({ children: BODY, explain: false, ...off });
+      const t = Shield({ children: BODY, wrapper: false, ...off });
       expect(props(shieldedBlock(t)).id).toBeUndefined();
       const scripts = findAllTags(t, "script").filter((s) =>
         String((props(s).dangerouslySetInnerHTML as { __html: string })?.__html).includes("-solve"),
@@ -480,7 +493,7 @@ describe("page-level wiring", () => {
   it("routes every emitted name through camouflage", () => {
     setCamouflage({ hash: "b7c1" });
     try {
-      const t = Shield({ children: BODY, ...INVISIBLE });
+      const t = Shield({ children: BODY, ...CLIPPED });
       const html = markup(t);
       expect(html).toContain("data-typeface-b7c1-solve");
       // Nothing in the SSR-visible output may say what this is.

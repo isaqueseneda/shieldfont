@@ -1,7 +1,7 @@
 /**
  * `copyPaste` — copy mediation, with and without the drawn wrapper.
  *
- * The prop shipped accepted-and-inert without `explain`, which its own doc
+ * The prop shipped accepted-and-inert without the wrapper, which its own doc
  * comment admitted. Two things are being defended now:
  *
  *   1. It is REAL on its own, and cheap: one attribute per block, one shared
@@ -166,7 +166,7 @@ describe("copyPaste requires a seal, and says so", () => {
     }
   });
 
-  it("names both ways out, the way the explain throw does", () => {
+  it("names both ways out, the way the wrapper throw does", () => {
     let msg = "";
     try {
       Shield({ children: BODY, copyPaste: true, screenReader: false } as never);
@@ -190,20 +190,20 @@ describe("copyPaste requires a seal, and says so", () => {
 
 describe("what standalone copyPaste costs the markup", () => {
   it("marks the block and emits one page-level listener", () => {
-    const tree = Shield({ children: BODY, explain: false, copyPaste: true } as never);
+    const tree = Shield({ children: BODY, wrapper: false, copyPaste: true } as never);
     const block = shieldedBlock(tree);
     expect(props(block)[`${A}-clip-say`]).toBe(standaloneClipboardNotice());
     expect(copyJs(tree)).toBeDefined();
   });
 
   it("adds NO elements — the whole per-block cost is one attribute", () => {
-    const withOut = Shield({ children: BODY, explain: false } as never);
-    const withOn = Shield({ children: BODY, explain: false, copyPaste: true } as never);
+    const withOut = Shield({ children: BODY, wrapper: false } as never);
+    const withOn = Shield({ children: BODY, wrapper: false, copyPaste: true } as never);
     const count = (t: unknown) => walkDeep(t as never).filter((e) => e.type !== "script").length;
     expect(count(withOn)).toBe(count(withOut));
   });
 
-  it("leaves the all-off tier alone", () => {
+  it("leaves a block with no seal alone", () => {
     // 199 bytes, one element, no matchable strings. Nothing in this feature may
     // reach it — and it cannot, because asking for both throws.
     const tree = Shield({ children: BODY, screenReader: false } as never);
@@ -211,24 +211,25 @@ describe("what standalone copyPaste costs the markup", () => {
     expect(copyJs(tree)).toBeUndefined();
   });
 
-  it("survives the wrapper being turned off — that is the INVISIBLE tier", () => {
-    // It used to default to whatever `explain` was, so `explain={false}` took
-    // the clipboard notice down with it and the middle tier was unaskable: you
-    // got the wrapper and the notice, or neither. They are independent now.
-    const tree = Shield({ children: BODY, explain: false } as never);
+  it("survives the wrapper being turned off", () => {
+    // It used to default to whatever `wrapper` was, so `wrapper={false}` took
+    // the clipboard notice down with it and there was no way to ask for copy
+    // mediation on an undrawn block: you got the wrapper and the notice, or
+    // neither. They are independent now.
+    const tree = Shield({ children: BODY, wrapper: false } as never);
     expect(props(shieldedBlock(tree))[`${A}-clip-say`]).toBeTruthy();
     expect(copyJs(tree)).toBeDefined();
   });
 
-  it("goes off when it is turned off — that is MINIMAL", () => {
-    const tree = Shield({ children: BODY, explain: false, copyPaste: false } as never);
+  it("goes off when it is turned off", () => {
+    const tree = Shield({ children: BODY, wrapper: false, copyPaste: false } as never);
     expect(props(shieldedBlock(tree))[`${A}-clip-say`]).toBeUndefined();
     expect(copyJs(tree)).toBeUndefined();
   });
 
   it("emits the listener once per render pass, not once per block", () => {
     const trees = withShieldRenderPass(() =>
-      [1, 2, 3].map((i) => Shield({ children: `${BODY} ${i}`, explain: false, copyPaste: true } as never)),
+      [1, 2, 3].map((i) => Shield({ children: `${BODY} ${i}`, wrapper: false, copyPaste: true } as never)),
     );
     expect(scripts(trees).filter((s) => s.includes("-clip-say]"))).toHaveLength(1);
     for (const t of trees) expect(props(shieldedBlock(t))[`${A}-clip-say`]).toBeTruthy();
@@ -237,7 +238,7 @@ describe("what standalone copyPaste costs the markup", () => {
   it("does not double up with the wrapper's own handler", () => {
     // Inside a frame the notice script owns the copy event. Two listeners on
     // one selection would fight over the same clipboard.
-    const tree = Shield({ children: BODY, explain: true, copyPaste: true } as never);
+    const tree = Shield({ children: BODY, wrapper: true, copyPaste: true } as never);
     expect(copyJs(tree)).toBeUndefined();
     expect(props(shieldedBlock(tree))[`${A}-clip-say`]).toBeUndefined();
   });
@@ -250,8 +251,8 @@ describe("what standalone copyPaste costs the markup", () => {
     // that knows their state. The names must not collide, and this is the test
     // that says so.
     const [framed, bare] = withShieldRenderPass(() => [
-      Shield({ children: BODY, explain: true } as never),
-      Shield({ children: `${BODY} 2`, explain: false, copyPaste: true } as never),
+      Shield({ children: BODY, wrapper: true } as never),
+      Shield({ children: `${BODY} 2`, wrapper: false, copyPaste: true } as never),
     ]);
     const marked = (t: unknown) =>
       walkDeep(t as never).filter((e) => `${A}-clip-say` in props(e));
@@ -264,7 +265,7 @@ describe("what standalone copyPaste costs the markup", () => {
   it("lets the sentence be replaced and translated", () => {
     const tree = Shield({
       children: BODY,
-      explain: false,
+      wrapper: false,
       copyPaste: { notice: "[Texto protegido.]" },
     } as never);
     expect(props(shieldedBlock(tree))[`${A}-clip-say`]).toBe("[Texto protegido.]");
@@ -273,7 +274,7 @@ describe("what standalone copyPaste costs the markup", () => {
   it("routes the attribute and the flag through camouflage", () => {
     setCamouflage({ hash: "b7c1" });
     try {
-      const tree = Shield({ children: BODY, explain: false, copyPaste: true } as never);
+      const tree = Shield({ children: BODY, wrapper: false, copyPaste: true } as never);
       expect(JSON.stringify(tree)).toContain("data-typeface-b7c1-clip");
       expect(copyJs(tree)).toContain("data-typeface-b7c1");
     } finally {
@@ -320,7 +321,7 @@ describe("the standalone sentence is self-sufficient", () => {
     // input would fail on that and mean nothing. The seal itself has its own
     // coverage-independent assertions in puzzle.test.ts.
     const secret = "Zarquon threadbare pomegranate ossuary.";
-    const tree = Shield({ children: secret, explain: false, copyPaste: true } as never);
+    const tree = Shield({ children: secret, wrapper: false, copyPaste: true } as never);
     const clip = props(shieldedBlock(tree))[`${A}-clip-say`] as string;
     for (const w of ["Zarquon", "threadbare", "pomegranate", "ossuary"]) {
       expect(clip.toLowerCase()).not.toContain(w.toLowerCase());
@@ -425,10 +426,16 @@ describe("the listener, executed", () => {
   });
 
   it("is small enough to be worth shipping per page", () => {
-    // ~1.5 kB, once, for every block on the page — against the alternative
+    // ~1.7 kB, once, for every block on the page — against the alternative
     // design, which was an invisible per-block host repeating the frame's
     // attributes on every protected paragraph. The bound is here to make a
     // future "just add a sweep and a MutationObserver" argue for itself.
-    expect(JS().length).toBeLessThan(1600);
+    //
+    // Raised from 1600 when the handler learned to splice EVERY selected block
+    // rather than the first. Before that, selecting three clipped paragraphs
+    // pasted one notice and two paragraphs of raw decoy words — so the 25 bytes
+    // bought the handler's entire reason for existing on a multi-block page.
+    // Raise this again only for a defect, never for a feature.
+    expect(JS().length).toBeLessThan(1750);
   });
 });

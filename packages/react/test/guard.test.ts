@@ -11,8 +11,8 @@
  * These tests run the generated script against a fake window/document/
  * document.fonts so the fail path is observed, not assumed.
  */
-import { describe, it, expect, vi } from "vitest";
-import { Shield, setFontHost } from "../src/Shield.js";
+import { describe, it, expect, vi, afterAll } from "vitest";
+import { Shield, setFontHost, setCamouflage } from "../src/Shield.js";
 import { findAllTags, props } from "./helpers.js";
 
 const BODY = "The future of writing belongs to those who write it.";
@@ -432,5 +432,46 @@ describe("unforwarded props are rejected, not dropped (regression)", () => {
         a11y: { mode: "none" },
       }),
     ).not.toThrow();
+  });
+});
+
+describe("setCamouflage({ attrName }) is validated", () => {
+  // setCamouflage mutates module-level state, so this block puts the defaults
+  // back. Leaving a renamed attribute behind would make whichever test ran next
+  // fail for a reason with nothing to do with what it was testing.
+  afterAll(() => {
+    setCamouflage({
+      attrName: "data-typeface",
+      guardFlag: "__tf_guard__",
+      logPrefix: "[typeface]",
+      familyName: { alpha: "Optik", beta: "Optik Beta", gamma: "Optik Gamma", maxhide: "Optik Max" },
+      filePrefix: { alpha: "optik-a", beta: "optik-b", gamma: "optik-c", maxhide: "optik-m" },
+    });
+  });
+
+  // `attrName` is spliced VERBATIM into CSS selectors and querySelectorAll
+  // strings in every emitted script. A bad value does not throw at runtime — it
+  // produces a selector matching nothing, so the guard never fires and the
+  // notice never wires, on a page that otherwise looks completely fine. Failing
+  // at the call is the only place this is cheap to notice.
+  it("accepts what the hash path itself generates", () => {
+    // The guard would be worthless — worse, actively harmful — if it rejected
+    // the library's own default naming.
+    for (const hash of ["a8f3", "ada3", "1iuxvtu", "0000"]) {
+      expect(() => setCamouflage({ hash })).not.toThrow();
+      expect(() => setCamouflage({ attrName: `data-typeface-${hash}` })).not.toThrow();
+    }
+  });
+
+  it("accepts ordinary hand-written names", () => {
+    for (const name of ["data-body", "data-x", "data-Type-9"]) {
+      expect(() => setCamouflage({ attrName: name })).not.toThrow();
+    }
+  });
+
+  it("rejects anything that would break a selector", () => {
+    for (const bad of ["data-a b", "data-a]", 'data-a"', "typeface", "data-a.b", "data-a[x]"]) {
+      expect(() => setCamouflage({ attrName: bad }), bad).toThrow(/attrName/);
+    }
   });
 });

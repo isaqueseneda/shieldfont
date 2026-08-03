@@ -35,7 +35,7 @@ export function descendants(el: ReactElement): ReactElement[] {
  * stopping at them.
  *
  * `walkAll` only ever descends through `props.children`, so a component that
- * renders a child component is a dead end: `<Shield explain>` returns a tree
+ * renders a child component is a dead end: `<Shield wrapper>` returns a tree
  * containing `<NoticeStrip where="top">`, and everything the notice actually
  * puts on the page — the buttons, the sentence, the progress bar — lives
  * inside a function that `walkAll` never calls. Assertions written against
