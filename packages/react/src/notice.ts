@@ -51,6 +51,82 @@
  *    a mechanism, addressed to an audience that only wants to know why copy
  *    behaves oddly and what to press about it.
  *
+ * ## The font check is deduped WITHIN a probe, never ACROSS probes
+ *
+ * `FONTS` exists so that ten blocks sharing one family and weight cost one
+ * `document.fonts.load` instead of ten. That is its whole job, and it must be
+ * emptied at the start of every probe.
+ *
+ * Keeping it between probes broke the font-failure path outright, which is how
+ * this comment came to be written. `probe()` runs again whenever the
+ * `-simulate-fail` attribute changes — that is the entire mechanism behind the
+ * demo's font-failure preview, and the closest thing there is to a test for a
+ * real 404. With the cache persisting, the second probe returned the FIRST
+ * probe's answer: the guard logged the failure, and every frame stayed in the
+ * healthy state. No skeleton, no `-failed`, and the strip still telling readers
+ * the text was fine while the page showed decoy words to everybody.
+ *
+ * `told` is cleared with it, so a genuine change of state gets a fresh console
+ * message rather than being suppressed by a warning about the previous one.
+ *
+ * ## One malformed block must not take the page down
+ *
+ * The payload is parsed in a try, but `data.ct.slice(0, 40)` sat OUTSIDE it. An
+ * empty array — from a CMS that post-processed the markup, a version skew, a
+ * hand-edited export — parsed fine, produced `[]`, and threw on `.ct`. The throw
+ * escaped the sweep loop, and the root had already been marked wired, so every
+ * remaining block on the page was left dead with no way to retry. One mangled
+ * paragraph silencing an entire article is the wrong blast radius for a library
+ * whose failure philosophy is fail loud, fail CONTAINED.
+ *
+ * Two layers, and the second is the one that matters: the parsed payload is
+ * shape-checked inside the try, and each block's construction and wiring is
+ * wrapped in its own try/catch so the sweep always reaches the next block.
+ * `solverScript` had the identical bug and gets the identical treatment.
+ *
+ * ## Standing down is STATE, not a one-time mutation
+ *
+ * A browser without `BigInt` or `crypto.subtle` gets `standdown()`: buttons
+ * hidden, sentence swapped for one that says so. It used to do that by writing
+ * to the DOM directly — and then `probe()` finished the font check, repainted
+ * every frame, and `paintStrip` cheerfully wrote the locked sentence back over
+ * it and un-hid the buttons. The reader was left with a control that could not
+ * work and a sentence telling them to press it.
+ *
+ * Guarding that one call path would have left the same landmine for every
+ * future repaint, and there are already two more (the simulate-fail observer,
+ * and any later sweep). So being incapable is now a flag the RENDERER consults,
+ * exactly like `state`. `standdown()` sets it and repaints; no repaint can
+ * un-say it, including ones that do not exist yet.
+ *
+ * ## The copy handler covers EVERY selected block, and skips empty ones
+ *
+ * It used to stop at the first protected block a selection touched, splice that
+ * one block's notice in, and set the result. Two failures came out of that on a
+ * page with more than one protected paragraph:
+ *
+ *   - Select three protected paragraphs and the reader got the notice for the
+ *     first and RAW DECOY WORDS for the other two. Fluent, grammatical, wrong
+ *     English pasted into their notes with nothing marking it — which is the
+ *     exact silent-wrong-paste failure this handler exists to prevent, and the
+ *     reason `copyPaste` defaults on.
+ *   - A block with no text made `src` the empty string, so `indexOf('')` was 0
+ *     and `split('')` spliced the whole notice between every single character of
+ *     the selection. A 19 kB clipboard from an empty paragraph. `copyGuardScript`
+ *     already skipped empty blocks; this handler never got the same guard.
+ *
+ * Both are fixed by collecting every intersecting block and splicing each one's
+ * own text. The single-block fallback — replace the whole selection when the
+ * block's text is not found verbatim — is kept only for one hit, because a
+ * partial selection of one block should still be caught, whereas applying it
+ * across several would throw away the other blocks' substitutions.
+ *
+ * `ev.defaultPrevented` is checked first because a page mixing tiers runs this
+ * handler AND `copyGuardScript`, both on `copy`, and whichever ran second used
+ * to overwrite the other's `setData` outright. Now the first one to act wins and
+ * the second stands down. A single selection spanning both tiers gets whichever
+ * ran first, which is imperfect and not worth machinery to merge.
+ *
  * ## What the emitted script does NOT carry
  *
  * Same rule as the font guard and the solver beside it: no comments, and no
@@ -149,10 +225,36 @@ export interface ShieldNotice {
    * `"both"` repeats it at the end of the box, for a passage long enough that a
    * reader who finishes it would otherwise scroll back up to act. It is not the
    * default because on anything short it is pure redundancy — a second copy of
-   * every control, 34 more elements and ~3.3 kB per block, and a second helping
+   * every control, 34 more elements and ~9 kB per block, and a second helping
    * of the same prose for anyone reading linearly.
    */
   position?: "top" | "both";
+
+  /**
+   * A class on the WRAPPER element — the drawn box that encloses the strip, the
+   * sentence and the buttons. Merged onto the frame `<div>`; the emitted rules
+   * are attribute-scoped and are not touched by it, so a project stylesheet can
+   * override them from here without the package being rebuilt.
+   *
+   * IT IS HERE RATHER THAN ON `<Shield className>`, and the split is the whole
+   * point of the field. `<Shield className>` already has a documented, shipped
+   * meaning — it lands on the encoded block and on the element the revealed
+   * words go into, i.e. on the TEXT — and widening it to also hit the wrapper
+   * would silently change what every existing stylesheet does: a rule written
+   * to set the article's measure and line-height would start applying to the
+   * box and its two strips as well, on upgrade, with nothing to say so. Two
+   * elements with genuinely different jobs need two hooks, and this is the one
+   * for the furniture.
+   *
+   * `<NonShield>` is deliberately not given a second hook. It renders exactly
+   * one element and has no furniture, so there is nothing to disambiguate and a
+   * second name would only be a thing to get wrong.
+   *
+   * The live case this exists for: the Uncover button inherits colours from the
+   * emitted stylesheet, which cannot know a host page's dark mode. A class here
+   * gets a project's own tokens onto the box without patching the package.
+   */
+  className?: string;
 
   /** Button labels. Defaults are deliberately plain verbs, not jargon. */
   labels?: {
@@ -277,6 +379,8 @@ export interface ResolvedNotice {
   brokenText: string;
   repeat: string;
   position: "top" | "both";
+  /** Unset when the author gave none — `className={undefined}` emits nothing. */
+  className?: string;
   labels: {
     show: string;
     copy: string;
@@ -369,6 +473,10 @@ export function resolveNotice(n: ShieldNotice | true): ResolvedNotice {
     brokenText: cfg.brokenText ?? DEFAULT_BROKEN,
     repeat: cfg.repeat ?? DEFAULT_REPEAT,
     position: cfg.position ?? "top",
+    // NOT defaulted to "". React renders `className=""` as a literal empty
+    // attribute, which is a byte of signature on every wrapper on the page for
+    // a feature almost nobody uses. Left undefined so the attribute is absent.
+    className: cfg.className,
     labels: {
       show: l.show ?? "Uncover",
       copy: l.copy ?? "Copy to clipboard",
@@ -491,8 +599,16 @@ function innerCss(F: string, attr: string): string {
     `${F} [${attr}-say]{position:relative;display:flex;align-items:center;gap:7px;`+
     `flex:1 1 0;min-width:0;min-height:36px;}` +
     `${F} [${attr}-acts]{min-height:30px;flex:0 0 auto;justify-content:flex-end;}` +
+    // 13px, not `.82rem`, for the reason the buttons are 11px: a rem is the
+    // host's root font size and a 10px-root host drew this at 8.2px. 13px is
+    // what .82rem resolved to on a default host.
+    //
+    // The two hardcoded accents here are the FALLBACK. They are keyed to
+    // `prefers-color-scheme`, which is the operating system's setting and not
+    // the colour of the page this is sitting on — see the derivation near the
+    // end of this sheet, which replaces them wherever it can run.
     `${F} [${attr}-toast]{position:absolute;inset:0;display:flex;align-items:center;`+
-    `font-size:.82rem;font-weight:500;color:#2E7D5B;pointer-events:none;`+
+    `font-size:13px;font-weight:500;color:#2E7D5B;pointer-events:none;`+
     `opacity:0;transform:translateY(6px);`+
     `transition:opacity .22s cubic-bezier(.2,.8,.2,1),transform .22s cubic-bezier(.2,.8,.2,1);}` +
     `${F} [${attr}-strip][${attr}-toasting] [${attr}-toast]{opacity:1;transform:none;}` +
@@ -515,25 +631,92 @@ function innerCss(F: string, attr: string): string {
     // broken to loading to open — and the strip visibly jumps under the
     // reader mid-solve. Ordinary wrapping fills each line and only the
     // last one moves.
-    `color:currentColor;opacity:.55;}` +
+    // .80, AND EVERY STEP OF THIS NUMBER'S HISTORY IS A WCAG 2.2 SC 1.4.3
+    // FAILURE SOMEBODY MEASURED. It was .55, which failed on every host but
+    // pure black; it went to .70; the style audit then found .70 failing on a
+    // host nobody had thought to try. Measured on a white page, 12px — this
+    // inherits `currentColor`, so the host picks the colour and we pick only
+    // the fade:
+    //
+    //          host #000   #111   #222   #333   #444   #374151 (Tailwind gray-700)
+    //   .55         4.76   4.17   3.67   3.24   2.88    3.19
+    //   .70         8.52   7.07   5.89   4.94   4.17    4.14   ← fails
+    //   .80        10.2    8.51   7.14   6.03   5.17    5.13
+    //
+    // gray-700 on white is Tailwind's default body colour and therefore one of
+    // the most-deployed pairs of colours on the web. At .70 it came out at
+    // 4.14:1. The whole point of the fade is that the sentence is furniture and
+    // should not shout over the passage it introduces, and at .80 it still
+    // reads as quieter than the body — this buys about a point of contrast for
+    // a difference in weight that has to be looked for.
+    //
+    // An earlier axe run reported all of this clean, because opacity on an
+    // ancestor does not appear in a child's computed style and the tool read 1.
+    // scripts/style-audit.mjs walks the ancestor chain for exactly that reason.
+    //
+    // SAY THE TRUE THING: .80 does not GUARANTEE 4.5:1 and nothing here can. A
+    // host whose own body text is #666 is at 4.44:1 before we touch it, and we
+    // can only ever be worse than the page we are in. This fixes the part that
+    // was ours.
+    `color:currentColor;opacity:.8;}` +
     `${F} [${attr}-say-full]:focus-visible{outline:2px solid currentColor;`+
     `outline-offset:3px;border-radius:3px;opacity:.9;}` +
     `${F} [${attr}-acts]{display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap;}` +
+    // FOUR THINGS IN HERE ARE ABOUT SOMEBODY ELSE'S STYLESHEET, and each was
+    // measured broken by scripts/style-audit.mjs before it was written.
+    //
+    // `font-size:11px`, NOT `.66rem`. A rem is the HOST's root font size, and a
+    // host that sets `html{font-size:10px}` — the old "62.5% trick", still in
+    // plenty of production CSS — drew these labels at 6.6px. Uppercase, 500
+    // weight, .06em tracking, 6.6px: unreadable, and invisible to every
+    // contrast checker because the colour was perfect. 11px is what .66rem
+    // resolved to on a default host, so nothing moves on a normal page; it
+    // simply stops being the host's decision. Measured: 6.6px → 11px on the
+    // 10px-root host, 15.8px → 11px on the 24px-root host.
+    //
+    // `line-height:1.4` is declared for the same reason: without it the pill's
+    // height is whatever the host's body line-height happens to be, and the
+    // strip is laid out around a fixed row. 1.4 is within a pixel of what a
+    // 1.5-line-height host was already producing, so this is a lock, not a
+    // change. A host rule carrying `!important` still wins — measured, and
+    // survivable: `* { line-height: 1 !important }` costs 3px of pill height
+    // and fails nothing.
+    //
+    // `letter-spacing` and `text-transform` were already declared, and are the
+    // reason a host `body{letter-spacing:2px}` cannot reach in here.
+    //
+    // The border is TWO declarations, and the second is the one that matters.
+    // At `rgba(128,128,128,.34)` the pill's edge measured 1.45:1 against the
+    // strip on every light host in the audit — an outline nobody can see, on
+    // the only two controls in the component. Derived from `currentColor` at
+    // 62% it tracks the host the way the rest of this sheet does and clears the
+    // 3:1 SC 1.4.11 asks of a control boundary on every host measured: 3.27 on
+    // white, 3.32 on Tailwind gray-700, 4.95 on a dark theme.
+    //
+    // 62% and not 52%, which was the first attempt: it cleared white at 3.27
+    // and then failed at 2.69 on a gray-700 host, because the tint is mixed
+    // toward the strip's own colour and a lighter host text has less room to
+    // fall. The audit found that; arithmetic on one background would not have.
+    //
+    // `#808080` is the fallback for a browser without `color-mix`. A fixed grey
+    // cannot follow a host, but mid-grey is the one value that clears 3:1
+    // against both a near-white strip (3.59) and a near-black one (4.32), and
+    // it is what the old rgba was already reaching for at a third of the alpha.
     `${F} button{display:inline-flex;align-items:center;gap:7px;cursor:pointer;` +
-    `border:1px solid rgba(128,128,128,.34);border-radius:999px;background:transparent;color:inherit;` +
-    `font-family:inherit;font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;` +
-    `font-weight:500;padding:7px 13px;white-space:nowrap;}` +
+    `border:1px solid #808080;` +
+    `border-color:color-mix(in srgb,currentColor 62%,transparent);` +
+    `border-radius:999px;background:transparent;color:inherit;` +
+    `font-family:inherit;font-size:11px;line-height:1.4;letter-spacing:.06em;` +
+    `text-transform:uppercase;font-weight:500;padding:7px 13px;white-space:nowrap;}` +
     `${F} button:hover{background:rgba(128,128,128,.14);}` +
     // WCAG 2.2 SC 2.4.7. The UA ring was never removed, so this is not a fix
     // for a missing indicator — it is a fix for an ILLEGIBLE one: the primary
     // button paints `background:currentColor`, and a default ring drawn in the
     // text colour on a background of the text colour is invisible. The offset
-    // moves it clear of the fill; `Canvas` is the same system colour the
-    // primary button already uses for its own glyphs, so it tracks the host
-    // page's light/dark scheme without this file knowing which one it is in.
+    // moves it clear of the fill; the colour is the same expression the glyphs
+    // on that fill use, and is derived below.
     `${F} button:focus-visible,${F} [${attr}-out]:focus-visible{` +
     `outline:2px solid currentColor;outline-offset:2px;}` +
-    `${F} button[${attr}-primary]:focus-visible{outline-color:Canvas;outline-offset:-4px;}` +
     // The BUSY state, and the reason it is a dim rather than a `hidden`.
     //
     // While the block is working, every action button used to be `hidden`.
@@ -545,9 +728,77 @@ function innerCss(F: string, attr: string): string {
     // know what was going on". A control that stays put, stays focused and
     // says it is busy costs one dimmed button and fixes it outright.
     `${F} button[${attr}-off]{opacity:.4;pointer-events:none;}` +
+
+    // ── THE UNCOVER BUTTON, AND THE BUG THAT WAS REPORTED AS "IN DARK MODE IT
+    //    GETS ALL FUCKED" ────────────────────────────────────────────────────
+    //
+    // It used to be four declarations:
+    //
+    //     button[-primary]      { background: currentColor }
+    //     button[-primary] span { color: Canvas }
+    //     button[-primary] svg  { color: Canvas }
+    //     button[-primary]:focus-visible { outline-color: Canvas }
+    //
+    // The fill is the host's text colour — correct, and the whole point of this
+    // component looking like part of the page it is in. The GLYPHS on that fill
+    // were `Canvas`, on the reasoning that the UA canvas is the host's page
+    // colour, so it must contrast with the host's text colour.
+    //
+    // `Canvas` is not the host's page colour. It is the colour the USER AGENT
+    // would paint, and it only goes dark when the document opts in with
+    // `color-scheme: dark`. A site that ships its own dark theme — `body {
+    // background: #111; color: #eee }`, which is how the large majority of dark
+    // themes on the web are actually built — leaves Canvas white. So the button
+    // painted near-white glyphs on a near-white fill:
+    //
+    //     host                                      label      icon
+    //     body{background:#111;color:#eee}          1.16:1     1.16:1
+    //     body{background:#0b0b0b;color:#f5f5f5}    1.09:1     1.09:1
+    //     Tailwind Preflight + slate-900 theme      1.23:1     1.23:1
+    //     forced-colors: active                     1.00:1     1.00:1
+    //
+    // 1.09:1 is not "hard to read". It is a button with nothing drawn on it.
+    // Every one of those numbers comes from scripts/style-audit.mjs, which
+    // exists because nobody could say what "fucked" meant.
+    //
+    // THE FIX ASKS THE FILL, NOT THE USER AGENT. The one thing that is known
+    // for certain about the glyphs' background is that it IS `currentColor`, so
+    // the glyph colour is derived from `currentColor` instead of from a system
+    // colour that only correlates with it. Relative colour syntax reads the
+    // fill's OKLCH lightness and picks the pole it is furthest from:
+    //
+    //     clamp(0, (.62 - l) * infinity, 1)   →   0 (black) when l > .62
+    //                                             1 (white) when l < .62
+    //
+    // `infinity` is a real <number> in calc(), so the multiplication saturates
+    // and the clamp turns a continuous lightness into the binary choice this
+    // needs. .62 is the standard OKLCH crossover for "black or white on this?";
+    // the worst case near it is a host whose body text is #767676, which gets
+    // white glyphs at 4.54:1 — and that host's own body text is 4.54:1 too, so
+    // the button is exactly as legible as the page it sits in, which is the
+    // most this component can honestly promise. Measured after: 15.2:1, 16.7:1
+    // and 13.1:1 on the three dark hosts above.
+    //
+    // WHY THE FILL IS GATED BEHIND @supports RATHER THAN THE GLYPHS. Gating
+    // only the glyph colour would leave a browser without relative colour with
+    // the old, broken pair. Gating the FILL means such a browser never gets a
+    // filled button at all: it falls through to the shared outline pill with a
+    // heavier weight, which is plainer than intended and legible everywhere,
+    // because its label is `currentColor` on the host's own background like
+    // everything else in the strip. Baseline for relative colour is Chrome 119,
+    // Safari 16.4 and Firefox 128 — this is the enhancement, not the floor.
+    //
+    // NO `!important` ANYWHERE IN HERE. Every one of these properties is
+    // declared on a selector carrying two attribute selectors, which beats any
+    // reset a host is realistically running, and the audit confirms Preflight,
+    // `all:unset` and a `* {}` reset all lose to it on the merits.
+    `${F} button[${attr}-primary]{font-weight:600;}` +
+    `@supports (color:oklch(from red l c h)){` +
     `${F} button[${attr}-primary]{background:currentColor;border-color:transparent;}` +
-    `${F} button[${attr}-primary] span{color:Canvas;}` +
-    `${F} button[${attr}-primary] svg{color:Canvas;}` +
+    `${F} button[${attr}-primary] span,${F} button[${attr}-primary] svg{` +
+    `color:oklch(from currentColor clamp(0,(.62 - l)*infinity,1) 0 0);}` +
+    `${F} button[${attr}-primary]:focus-visible{outline-offset:-4px;` +
+    `outline-color:oklch(from currentColor clamp(0,(.62 - l)*infinity,1) 0 0);}}` +
     `${F} button svg{width:13px;height:13px;flex:none;}` +
     // 24x24, not 20x20: WCAG 2.2 SC 2.5.8 (Target Size, Minimum) is AA and
     `${F} [${attr}-icon]{display:inline-flex;align-items:center;flex:none;opacity:.75;}` +
@@ -559,7 +810,11 @@ function innerCss(F: string, attr: string): string {
     `${F} progress::-webkit-progress-bar{background:rgba(128,128,128,.22);border-radius:999px;}` +
     `${F} progress::-webkit-progress-value{background:currentColor;border-radius:999px;}` +
     `${F} progress::-moz-progress-bar{background:currentColor;border-radius:999px;}` +
-    `${F} [${attr}-est]{order:-1;font-size:12px;line-height:1.32;letter-spacing:normal;opacity:.72;`+
+    // .80, matched to the sentence it covers. At .72 it measured 4.36:1 on a
+    // Tailwind gray-700 host — the same failure, in the same place, for the
+    // same reason, and it is live text a reader is meant to read while they
+    // wait rather than decoration.
+    `${F} [${attr}-est]{order:-1;font-size:12px;line-height:1.32;letter-spacing:normal;opacity:.8;`+
     `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}` +
     // The clipped copy of the full sentence. NEVER display:none. Its presence
     // in the tree is now controlled by `aria-hidden`, and a
@@ -573,8 +828,80 @@ function innerCss(F: string, attr: string): string {
     `${F} [${attr}-acts] button[${attr}-act]{flex:1 1 0;justify-content:center;}`+
     
     `${F} progress{flex:1 1 auto;width:auto;max-width:none;}`+
-    
+
     `${F} > [${attr}-block],${F} > [${attr}-out]{padding:18px 14px;}`+
+    `}` +
+
+    // ── THE TOAST'S ACCENT, KEYED TO THE PAGE RATHER THAN TO THE OPERATING
+    //    SYSTEM ───────────────────────────────────────────────────────────
+    //
+    // The green and the red above are fixed colours with a
+    // `prefers-color-scheme: dark` variant, and that variant asks the wrong
+    // question. `prefers-color-scheme` is what the READER told their operating
+    // system. It says nothing about what this page is painted, and the two
+    // disagree constantly: a site with its own dark theme and no OS preference
+    // set, a site that only ships light and a reader whose OS is dark. Measured
+    // on those two hosts, the confirmation line came out at 3.68:1 and 1.55:1.
+    //
+    // No fixed colour can fix this. A green dark enough for 4.5:1 on white
+    // needs luminance ≤ .183 and a green light enough for 4.5:1 on #111 needs
+    // ≥ .223, so the two requirements have no overlap and the choice HAS to be
+    // made per page. The signal available is the one the rest of this sheet
+    // already runs on: `currentColor` is the host's text colour, so its
+    // lightness says which way round the page is. Same saturating clamp the
+    // primary button uses, into a fixed hue and chroma so a green stays green.
+    //
+    // The fallback is the pair above, unchanged. A browser without relative
+    // colour gets exactly what it got before this block existed.
+    //
+    // WHERE THIS IS STILL A GUESS, said plainly. Reading the page's polarity off
+    // the text colour is exact at both ends and undefined in the middle: a host
+    // whose body text is around #8a8a8a lands on the wrong side of .62 and gets
+    // a light green on a white page, 1.42:1. That host's own body text is 3.45:1
+    // and fails SC 1.4.3 before this component draws anything, so the ambiguity
+    // exists only where the page has already lost — but it is a real limit and
+    // it is measured, as `host-below-the-line` in scripts/style-audit.mjs. The
+    // Uncover button is not affected: its glyphs are derived against the FILL,
+    // which is that same colour, so it stays legible on top of it either way.
+    `@supports (color:oklch(from red l c h)){` +
+    `${F} [${attr}-toast]{color:oklch(from currentColor clamp(.42,(l - .62)*infinity,.84) .14 152);}` +
+    `${F} [${attr}-strip][${attr}-toasting="blocked"] [${attr}-toast]{` +
+    `color:oklch(from currentColor clamp(.45,(l - .62)*infinity,.82) .17 27);}}` +
+
+    // ── WINDOWS HIGH CONTRAST ─────────────────────────────────────────────
+    //
+    // Forced colors replaces every author colour with one of a handful the
+    // reader chose, and it does it property by property — which is why the
+    // primary button came out at exactly 1.00:1 in the audit. Its fill was
+    // `currentColor` and its glyphs were `Canvas`; forced colors mapped both
+    // ends of that onto the same system colour and the button went blank.
+    //
+    // The fix is to stop being clever in this mode and ask for the colours the
+    // reader already picked for buttons. ButtonFace/ButtonText/ButtonBorder is
+    // what a native <button> gets, so these end up looking like the rest of the
+    // reader's system rather than like a component that has opinions.
+    //
+    // The selectors carry the `-primary` attribute even where the value is the
+    // same for every button: the @supports block above is (0,2,1) and a plain
+    // `button` rule here would be (0,1,1) and lose. This block is LAST in the
+    // sheet so that, at equal specificity, it wins.
+    //
+    // Opacity is not a colour and forced colors does not touch it, so every
+    // fade in this sheet survives into a mode whose entire purpose is removing
+    // fades. They are reset here: the busy dim becomes GrayText, which is the
+    // system's own way of saying the same thing, and the rest go to full.
+    `@media (forced-colors:active){` +
+    `${F} button,${F} button[${attr}-primary]{background:ButtonFace;border-color:ButtonBorder;}` +
+    `${F} button span,${F} button svg,` +
+    `${F} button[${attr}-primary] span,${F} button[${attr}-primary] svg{color:ButtonText;}` +
+    `${F} button[${attr}-off]{opacity:1;border-color:GrayText;}` +
+    `${F} button[${attr}-off] span,${F} button[${attr}-off] svg{color:GrayText;}` +
+    `${F} button:focus-visible,${F} button[${attr}-primary]:focus-visible,` +
+    `${F} [${attr}-out]:focus-visible{outline:2px solid CanvasText;outline-offset:2px;}` +
+    `${F} [${attr}-say-full],${F} [${attr}-est],${F} [${attr}-status],` +
+    `${F} [${attr}-icon]{opacity:1;}` +
+    `${F} [${attr}-toast],${F} [${attr}-strip][${attr}-toasting="blocked"] [${attr}-toast]{` +
+    `color:CanvasText;}` +
     `}`
   );
 }
@@ -745,7 +1072,7 @@ export function altCss(attr: string): string {
     // Same widths, same order, same look as the drawn strip — the demo used
     // to restyle both of these itself and they came out a different product.
     `${G} > progress{flex:1 1 100%;order:7;margin:2px 0;}`+
-    `${G} > [${attr}-status]{flex:1 1 100%;order:8;font-size:12px;line-height:1.32;opacity:.55;}`+
+    `${G} > [${attr}-status]{flex:1 1 100%;order:8;font-size:12px;line-height:1.32;opacity:.7;}`+
     // AN EMPTY LIVE REGION TAKES NO ROW. It is `flex:1 1 100%`, so even at
     // zero height it wrapped to a line of its own and collected the 10px
     // row-gap in front of it — which is why this tier's box had visibly more
@@ -775,6 +1102,17 @@ export function altCss(attr: string): string {
  * false") is a request to suppress the exact announcements the feature depends
  * on. Inconsistent support is the only reason they were heard at all.
  */
+/**
+ * A string literal safe inside `<script>`. See the twin in solver.ts: an HTML
+ * parser ends a script at the first literal `</`, whatever JavaScript quoting
+ * says, so `JSON.stringify` alone is not enough for a value that lands there.
+ * Duplicated rather than shared because Shield.tsx imports this module, and an
+ * import back would be a cycle.
+ */
+function js(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 export function noticeScript(names: NoticeNames): string {
   const { attr, flag, logPrefix, storePrefix, family } = names;
   const WORKER_BODY =
@@ -791,15 +1129,15 @@ export function noticeScript(names: NoticeNames): string {
 
   return `(function(){
 if (typeof window === 'undefined' || typeof document === 'undefined') return;
-if (window[${JSON.stringify(flag)}]) return;
-window[${JSON.stringify(flag)}] = 1;
-var A = ${JSON.stringify(attr)};
-var PFX = ${JSON.stringify(logPrefix)};
-var STORE = ${JSON.stringify(storePrefix)};
-var FAMILY = ${JSON.stringify(family)};
-var BODY = ${JSON.stringify(WORKER_BODY)};
+if (window[${js(flag)}]) return;
+window[${js(flag)}] = 1;
+var A = ${js(attr)};
+var PFX = ${js(logPrefix)};
+var STORE = ${js(storePrefix)};
+var FAMILY = ${js(family)};
+var BODY = ${js(WORKER_BODY)};
 var CAPABLE = typeof BigInt === 'function' && window.crypto && window.crypto.subtle;
-var FONT_OK = true;
+var FONTS = {};
 var frames = [];
 var wired = typeof WeakSet === 'function' ? new WeakSet() : null;
 var wiredList = [];
@@ -860,23 +1198,28 @@ function Frame(root){
   var self = this;
   this.root = root;
   this.state = 'locked';
+  this.down = 0;
+  this.ok = true;
   this.plain = null;
   this.block = root.querySelector('[' + A + '-block]');
   this.out = root.querySelector('[' + A + '-out]');
   this.status = root.querySelector('[' + A + '-status]');
   var holder = root.querySelector('[' + A + '-data]');
+  this.data = null;
   try {
     var all = JSON.parse(holder.textContent);
-    this.data = all.length ? pick(all, root.getAttribute(A + '-for') || '') : all;
+    var d = all && all.length ? pick(all, root.getAttribute(A + '-for') || '') : all;
+    if (d && typeof d.ct === 'string' && d.n && d.t) this.data = d;
+    else console.error(PFX + ' sealed payload is missing required fields.');
   }
-  catch (e) { console.error(PFX + ' sealed payload is not valid JSON.', e); this.data = null; }
+  catch (e) { console.error(PFX + ' sealed payload is not valid JSON.', e); }
   this.key = this.data ? STORE + this.data.ct.slice(0, 40) : null;
   try { this.says = JSON.parse(root.getAttribute(A + '-says') || '{}'); }
   catch (e) { this.says = {}; }
   this.cached = null;
   try { this.cached = this.key ? window.localStorage.getItem(this.key) : null; } catch (e) {}
+  this.down = !CAPABLE && !this.cached ? 1 : 0;
   this.paint();
-  if (!CAPABLE && !this.cached) this.standdown();
 }
 Frame.prototype.reopen = function(){
   var self = this;
@@ -893,24 +1236,16 @@ Frame.prototype.reopen = function(){
 };
 Frame.prototype.say = function(k){ if (this.status) this.status.textContent = this.says[k] || ''; };
 Frame.prototype.standdown = function(){
-  var btns = this.root.querySelectorAll('[' + A + '-act]'), i;
-  for (i = 0; i < btns.length; i++){
-    btns[i].hidden = true;
-    btns[i].style.display = 'none';
-  }
-  var says = this.root.querySelectorAll('[' + A + '-say-full]');
-  for (i = 0; i < says.length; i++){
-    says[i].textContent = this.says.incapable || '';
-    says[i].setAttribute('aria-label', this.says.incapable || '');
-  }
+  this.down = 1;
+  this.paint();
 };
 Frame.prototype.paint = function(){
   var self = this, st = this.state, open = st === 'open';
   var gn = open ? this.says.groupOpen : this.says.group;
   if (gn) this.root.setAttribute('aria-label', gn);
-  if (!FONT_OK && !open) this.root.setAttribute(A + '-failed', '1');
+  if (this.ok === false && !open) this.root.setAttribute(A + '-failed', '1');
   else this.root.removeAttribute(A + '-failed');
-  var broken = !FONT_OK && !open;
+  var broken = this.ok === false && !open;
   if (this.block){
     this.block.hidden = open;
     if (broken) this.block.setAttribute(A + '-skeleton', '');
@@ -918,8 +1253,11 @@ Frame.prototype.paint = function(){
   }
   if (this.out){
     this.out.hidden = !open;
-    if (open){ this.out.textContent = this.plain; this.out.setAttribute('tabindex', '0');
-      this.out.removeAttribute('aria-hidden'); }
+    if (open){
+      if (this.out.textContent !== this.plain) this.out.textContent = this.plain;
+      this.out.setAttribute('tabindex', '0');
+      this.out.removeAttribute('aria-hidden');
+    }
     else { this.out.textContent = ''; this.out.setAttribute('tabindex', '-1'); }
   }
   var strips = q(this.root, 'strip');
@@ -930,9 +1268,9 @@ Frame.prototype.paintStrip = function(strip){
   var acts = strip.querySelector('[' + A + '-acts]');
   var shortEl = strip.querySelector('[' + A + '-say-full]');
   if (shortEl && st !== 'working') {
-    var key = st === 'open' ? '-open-say' : (FONT_OK ? '-locked-say' : '-broken-say');
+    var key = st === 'open' ? '-open-say' : (this.ok === false ? '-broken-say' : '-locked-say');
     var seen = strip.getAttribute(A + key) || '';
-    var heard = st === 'open' || !FONT_OK
+    var heard = st === 'open' || this.ok === false
       ? seen
       : (strip.getAttribute(A + '-locked-name') || seen);
     var eye = shortEl.querySelector('[' + A + '-seen]');
@@ -964,6 +1302,15 @@ Frame.prototype.paintStrip = function(strip){
     if (anyBusy) b.hidden = false;
     if (busy){ b.setAttribute('aria-disabled', 'true'); b.setAttribute(A + '-off', ''); }
     else { b.removeAttribute('aria-disabled'); b.removeAttribute(A + '-off'); }
+    if (this.down){ b.hidden = true; b.style.display = 'none'; }
+  }
+  if (this.down && shortEl){
+    var msg = this.says.incapable || '';
+    var eye2 = shortEl.querySelector('[' + A + '-seen]');
+    var ear2 = shortEl.querySelector('[' + A + '-heard]');
+    if (eye2 && ear2){ eye2.textContent = msg; ear2.textContent = msg; }
+    else shortEl.textContent = msg;
+    shortEl.setAttribute('aria-label', msg);
   }
 };
 Frame.prototype.hold = function(strip, kind){
@@ -979,6 +1326,11 @@ Frame.prototype.run = function(intent, strip, own){
     this.say(window.isSecureContext === false ? 'insecure' : 'incapable');
     this.standdown();
     return;
+  }
+  if (own){ if (this.out) this.out.setAttribute('aria-live', 'polite'); }
+  else {
+    if (this.out) this.out.removeAttribute('aria-live');
+    if (this.status) this.status.setAttribute('aria-live', 'off');
   }
   this.state = 'working';
   this.paint();
@@ -1054,6 +1406,11 @@ Frame.prototype.copy = function(btn){
   }
 };
 function all(except){
+  var live = [];
+  for (var p = 0; p < frames.length; p++){
+    if (frames[p].root && frames[p].root.isConnected !== false) live.push(frames[p]);
+  }
+  frames = live;
   for (var i = 0; i < frames.length; i++){
     var f = frames[i];
     if (f === except || f.state !== 'locked' || !f.data) continue;
@@ -1063,7 +1420,8 @@ function all(except){
   for (var j = 0; j < others.length; j++){
     var o = others[j];
     if (o.hidden || o.getAttribute('aria-disabled') === 'true') continue;
-    try { o.click(); } catch (e) {}
+    try { var e4 = new MouseEvent('click', {bubbles: true}); e4.__all = 1; o.dispatchEvent(e4); }
+    catch (e) { try { o.click(); } catch (e5) {} }
   }
 }
 document.addEventListener('click', function(ev){
@@ -1094,37 +1452,74 @@ document.addEventListener('copy', function(ev){
   if (!CAPABLE) return;
   var sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-  var hit = null;
+  if (ev.defaultPrevented || !ev.clipboardData) return;
+  var hits = [];
   for (var i = 0; i < frames.length; i++){
     var f = frames[i];
     if (f.state === 'open' || !f.block || !f.guard) continue;
+    if (!f.block.textContent) continue;
     for (var r = 0; r < sel.rangeCount; r++){
-      if (sel.getRangeAt(r).intersectsNode(f.block)){ hit = f; break; }
+      if (sel.getRangeAt(r).intersectsNode(f.block)){ hits.push(f); break; }
     }
-    if (hit) break;
   }
-  if (!hit) return;
-  if (!ev.clipboardData) return;
-  var text = sel.toString(), src = hit.block.textContent, msg = hit.notice;
-  ev.clipboardData.setData('text/plain',
-    text.indexOf(src) !== -1 ? text.split(src).join(msg) : msg);
+  if (!hits.length) return;
+  var text = sel.toString();
+  for (var h = 0; h < hits.length; h++){
+    var src = hits[h].block.textContent;
+    if (text.indexOf(src) !== -1) text = text.split(src).join(hits[h].notice);
+    else if (hits.length === 1) text = hits[h].notice;
+  }
+  ev.clipboardData.setData('text/plain', text);
   ev.preventDefault();
-  hit.say('clipped');
-  hit.toast('blocked');
+  hits[0].say('clipped');
+  hits[0].toast('blocked');
 });
+function faceOf(block){
+  var fam = FAMILY, w = '400';
+  if (block && window.getComputedStyle){
+    var cs = window.getComputedStyle(block);
+    var first = String(cs.fontFamily || '').split(',')[0].trim().replace(/^["']|["']$/g, '');
+    if (first) fam = first;
+    if (cs.fontWeight) w = String(cs.fontWeight);
+  }
+  return { fam: fam, w: w };
+}
+function faceOk(fam, w){
+  var key = fam + '|' + w;
+  if (FONTS[key]) return FONTS[key];
+  var p;
+  if (document.documentElement.hasAttribute(A + '-simulate-fail')) p = Promise.resolve(false);
+  else if (!document.fonts || !document.fonts.load) p = Promise.resolve(false);
+  else p = document.fonts.load(w + ' 1em "' + fam + '"').then(function(f){
+    if (!f || f.length === 0) return false;
+    for (var i = 0; i < f.length; i++) if (f[i].status === 'error') return false;
+    return true;
+  }, function(){ return false; });
+  FONTS[key] = p;
+  return p;
+}
+var told = {};
 function probe(){
-  var done = function(ok){
-    FONT_OK = ok;
-    if (!ok) console.error(PFX + ' font "' + FAMILY + '" did not load. Every [' + A + '-block] on this page is showing substituted text. Check that the face is reachable.');
-    for (var i = 0; i < frames.length; i++) frames[i].paint();
-  };
-  if (document.documentElement.hasAttribute(A + '-simulate-fail')) return done(false);
-  if (!document.fonts || !document.fonts.load) return done(false);
-  document.fonts.load('1em "' + FAMILY + '"').then(function(f){
-    if (!f || f.length === 0) return done(false);
-    for (var i = 0; i < f.length; i++) if (f[i].status === 'error') return done(false);
-    done(true);
-  }, function(){ done(false); });
+  FONTS = {};
+  told = {};
+  var live = [];
+  for (var i = 0; i < frames.length; i++){
+    if (frames[i].root && frames[i].root.isConnected !== false) live.push(frames[i]);
+  }
+  frames = live;
+  for (var j = 0; j < frames.length; j++){
+    (function(f){
+      var face = faceOf(f.block);
+      faceOk(face.fam, face.w).then(function(ok){
+        f.ok = ok;
+        if (!ok && !told[face.fam]){
+          told[face.fam] = 1;
+          console.error(PFX + ' font "' + face.fam + '" did not load at weight ' + face.w + '. Blocks using it are showing substituted text. Check that the face is reachable.');
+        }
+        f.paint();
+      });
+    })(frames[j]);
+  }
 }
 var probed = false;
 function sweep(){
@@ -1134,12 +1529,15 @@ function sweep(){
     var r = roots[i];
     if (isWired(r)) continue;
     markWired(r);
-    var f = new Frame(r);
-    f.guard = r.getAttribute(A + '-guard') !== '0';
-    f.notice = r.getAttribute(A + '-clip') || '';
-    frames.push(f);
-    fresh.push(f);
-    f.reopen();
+    try {
+      var f = new Frame(r);
+      f.guard = r.getAttribute(A + '-guard') !== '0';
+      f.notice = r.getAttribute(A + '-clip') || '';
+      frames.push(f);
+      fresh.push(f);
+      f.reopen();
+    }
+    catch (e) { console.error(PFX + ' one block could not be prepared.', e); }
   }
   if (!fresh.length) return;
   if (!probed){ probed = true; probe(); }
@@ -1211,6 +1609,19 @@ try { new MutationObserver(function(){ if (document.readyState !== 'loading') sw
  *   used, and it is stated here because it is the one case where a reader loses
  *   text they had also selected.
  *
+ * ## It covers every selected block too, and yields to the wrapper
+ *
+ * Same two fixes as the wrapper's handler, for the same reasons: it stopped at
+ * the first `-clip-say` element a selection touched, so selecting three clipped
+ * blocks pasted one notice and two paragraphs of raw decoy words. And on a page
+ * mixing tiers BOTH handlers are bound to `copy`, so whichever ran second used
+ * to overwrite the other's `setData`. Each now checks `defaultPrevented` and the
+ * first to act wins.
+ *
+ * The whole-selection fallback still applies only when exactly one block was
+ * touched — with several, replacing everything would discard the substitutions
+ * already made for the others.
+ *
  * ## What the emitted source does NOT carry
  *
  * Same rule as every other emitted script in this package: no comments, and no
@@ -1230,9 +1641,9 @@ export function copyGuardScript(names: CopyGuardNames): string {
   const { attr, flag } = names;
   return `(function(){
 if (typeof window === 'undefined' || typeof document === 'undefined') return;
-if (window[${JSON.stringify(flag)}]) return;
-window[${JSON.stringify(flag)}] = 1;
-var A = ${JSON.stringify(attr)};
+if (window[${js(flag)}]) return;
+window[${js(flag)}] = 1;
+var A = ${js(attr)};
 function parts(el){
   var id = el.id;
   var b = id ? document.querySelector('[' + A + '-solve-for="' + id + '"]') : null;
@@ -1240,31 +1651,31 @@ function parts(el){
   return { b: b, o: g ? g.querySelector('[' + A + '-out]') : null };
 }
 document.addEventListener('copy', function(ev){
-  if (!ev.clipboardData) return;
+  if (ev.defaultPrevented || !ev.clipboardData) return;
   var sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-  var els = document.querySelectorAll('[' + A + '-clip-say]');
+  var els = document.querySelectorAll('[' + A + '-clip-say]'), hits = [];
   for (var i = 0; i < els.length; i++){
-    var el = els[i], src = el.textContent, note = el.getAttribute(A + '-clip-say');
-    if (!src || !note) continue;
-    var touched = false;
+    var el = els[i];
+    if (!el.textContent || !el.getAttribute(A + '-clip-say')) continue;
     for (var r = 0; r < sel.rangeCount; r++){
-      if (sel.getRangeAt(r).intersectsNode(el)){ touched = true; break; }
+      if (sel.getRangeAt(r).intersectsNode(el)){ hits.push(el); break; }
     }
-    if (!touched) continue;
-    var p = parts(el);
+  }
+  if (!hits.length) return;
+  var got = sel.toString(), put = got;
+  for (var h = 0; h < hits.length; h++){
+    var hitEl = hits[h], src = hitEl.textContent;
+    var note = hitEl.getAttribute(A + '-clip-say'), p = parts(hitEl);
     var ready = p.o && p.o.textContent ? p.o.textContent : '';
     if (!ready && !(p.b && p.b.hidden === false)) return;
-    var got = sel.toString();
     var twice = ready !== '' && got.indexOf(ready) !== -1;
-    var put;
-    if (got.indexOf(src) !== -1) put = got.split(src).join(twice ? '' : (ready || note));
+    if (put.indexOf(src) !== -1) put = put.split(src).join(twice ? '' : (ready || note));
     else if (twice) return;
-    else put = ready || note;
-    ev.clipboardData.setData('text/plain', put);
-    ev.preventDefault();
-    return;
+    else if (hits.length === 1) put = ready || note;
   }
+  ev.clipboardData.setData('text/plain', put);
+  ev.preventDefault();
 });
 })();`;
 }

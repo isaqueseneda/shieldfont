@@ -43,7 +43,7 @@
  * - The busy state is `aria-disabled`, NEVER the `disabled` property. Setting
  *   `disabled` on the element that currently HAS focus makes the browser move
  *   focus to <body>, and measured here it stayed there for the whole grind —
- *   5 to 20 seconds in which a keyboard user has lost their place and a
+ *   the seconds in which a keyboard user has lost their place and a
  *   screen-reader user on Windows has had their virtual cursor reset to the top
  *   of the document. The polite "working" message then arrives with nothing to
  *   attach it to. `aria-disabled` announces the same state, keeps the control
@@ -206,18 +206,29 @@ postMessage({done:x.toString(16)});
  * up by a MutationObserver, so a Suspense boundary resolving after this ran
  * still gets a working button.
  */
+/**
+ * A string literal safe inside `<script>`. See the twin in solver.ts: an HTML
+ * parser ends a script at the first literal `</`, whatever JavaScript quoting
+ * says, so `JSON.stringify` alone is not enough for a value that lands there.
+ * Duplicated rather than shared because Shield.tsx imports this module, and an
+ * import back would be a cycle.
+ */
+function js(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 export function solverScript(names: SolverNames): string {
   const { attr, flag, logPrefix, storePrefix } = names;
 
   return `(function(){
 if (typeof window === 'undefined' || typeof document === 'undefined') return;
-if (window[${JSON.stringify(flag)}]) return;
-window[${JSON.stringify(flag)}] = 1;
-var ATTR = ${JSON.stringify(attr)};
+if (window[${js(flag)}]) return;
+window[${js(flag)}] = 1;
+var ATTR = ${js(attr)};
 var SOLVE = ATTR + '-solve';
-var PFX = ${JSON.stringify(logPrefix)};
-var STORE = ${JSON.stringify(storePrefix)};
-var BODY = ${JSON.stringify(WORKER_BODY)};
+var PFX = ${js(logPrefix)};
+var STORE = ${js(storePrefix)};
+var BODY = ${js(WORKER_BODY)};
 var CAPABLE = typeof BigInt === 'function' && typeof window.crypto === 'object' &&
               window.crypto && typeof window.crypto.subtle === 'object';
 function fromB64(s){
@@ -261,12 +272,14 @@ function wire(btn){
   if (!status || !out || !holder) return;
   btn.setAttribute(SOLVE + '-wired', '1');
   function targetBlock(){ return document.getElementById(btn.getAttribute(SOLVE + '-for')); }
-  var data;
+  var data = null;
   try {
     var all = JSON.parse(holder.textContent);
-    data = all.length ? pick(all, btn.getAttribute(SOLVE + '-for') || '') : all;
+    var d = all && all.length ? pick(all, btn.getAttribute(SOLVE + '-for') || '') : all;
+    if (d && typeof d.ct === 'string' && d.n && d.t) data = d;
   }
-  catch (err) { console.error(PFX + ' sealed payload is not valid JSON.', err); return; }
+  catch (err) { console.error(PFX + ' sealed payload is not valid JSON.', err); }
+  if (!data){ console.error(PFX + ' sealed payload is missing required fields.'); return; }
   var storeKey = STORE + data.ct.slice(0, 40);
   function reveal(plain, cached){
     var onScreen = out.getAttribute(ATTR + '-out') !== 'hidden';
@@ -274,6 +287,11 @@ function wire(btn){
     hide(btn);
     hide(bar);
     text(status, cached ? 'The text is ready.' : (onScreen ? 'Done. The text is shown below.' : 'Done.'));
+    var note = wrap.querySelector('[' + ATTR + '-open-note]');
+    if (note){
+      var opened = note.getAttribute(ATTR + '-open-note');
+      if (opened) note.textContent = opened;
+    }
     out.textContent = plain;
     out.setAttribute('tabindex', '0');
     show(out);
@@ -298,6 +316,8 @@ function wire(btn){
     if (btn.getAttribute('aria-disabled') === 'true') return;
     btn.setAttribute('aria-disabled', 'true');
     btn.__own = !ev || !ev.__all;
+    if (btn.__own) out.setAttribute('aria-live', 'polite');
+    else { out.removeAttribute('aria-live'); if (status) status.setAttribute('aria-live', 'off'); }
     if (!ev || !ev.__all){
       var peers = document.querySelectorAll('[' + SOLVE + ']');
       for (var pi = 0; pi < peers.length; pi++){
@@ -392,7 +412,10 @@ function wire(btn){
 }
 function sweep(){
   var els = document.querySelectorAll('[' + SOLVE + ']');
-  for (var i = 0; i < els.length; i++) wire(els[i]);
+  for (var i = 0; i < els.length; i++){
+    try { wire(els[i]); }
+    catch (e) { console.error(PFX + ' one control could not be prepared.', e); }
+  }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sweep);
 else sweep();

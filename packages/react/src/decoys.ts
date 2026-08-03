@@ -42,7 +42,7 @@
  *
  * ## Why the decoys are ENCODED before they are sealed
  *
- * A decoy holding recognisable Austen can be matched against Gutenberg in one
+ * A decoy holding recognisable Austen or Melville can be matched against Gutenberg in one
  * query and thrown away, which costs an attacker nothing. Encoded, it matches
  * nothing anywhere, and carries the same word-frequency fingerprint as the
  * visible block — because it was made the same way.
@@ -87,7 +87,7 @@ const PAD_BUCKET = 256;
  * AES-GCM encrypts the UTF-8 encoding, so what leaks through ciphertext length
  * is the byte count. Padding to a common CHARACTER count leaves two payloads
  * different sizes the moment one of them contains a curly quote or an em-dash,
- * which Austen is full of. The first version of this did exactly that and the
+ * which the corpus is full of. The first version of this did exactly that and the
  * set still gave itself away; a test caught it.
  */
 function byteLen(text: string): number {
@@ -115,40 +115,34 @@ export interface SealedSet {
 /**
  * Seal `plain` among {@link DECOY_COUNT} decoys and say where it landed.
  *
- * `seed` should identify the SITE, not the block: it picks which paragraphs of
- * the corpus get used, and the point of seeding it is that two projects using
- * this library never ship the same decoys. If they did, one afternoon's work
- * would produce a list of known decoy ciphertexts good against everybody.
- * `camo.hash` is exactly the right granularity and is already per project.
- *
  * `blockKey` places the real payload within the set. It has to be stable across
  * server and client — the emitted script derives the same index from the same
  * input, so anything that changes between renders would leave the browser
  * grinding a decoy and reporting a failure it cannot explain.
  *
- * Deterministic throughout: same inputs, same output, because a build that
- * emits different bytes each time breaks CI caching and makes two builds of one
- * commit incomparable. Note that the SEALING is not deterministic — sealText
- * mints fresh primes every call, by design — so the ciphertexts differ per
- * build while the arrangement does not.
+ * ## Which paragraphs get used is RANDOM, and that was the bug
+ *
+ * There used to be a `seed` parameter here, carrying the project's camouflage
+ * hash, and the corpus draw was derived from it plus the block key. Both values
+ * are printed in the page. `decoyParagraphs` and the corpus are both public
+ * exports. So the decoys could be recomputed straight from the markup by anyone
+ * who installed the package — no CPU, no browser, nothing solved — and the real
+ * payload identified by elimination. A reviewer did it on eight blocks of eight.
+ *
+ * Nothing needed that derivation. The browser is told which payload is its own
+ * by `indexFor(blockKey)`; it never needs to know what the others hold. So the
+ * draw is now `crypto.randomInt` and there is nothing left to recompute.
+ *
+ * The parameter is removed rather than ignored, so no caller can believe it
+ * still does something.
  */
 export function sealWithDecoys(
   plain: string,
   mapping: Mapping,
   seconds: number,
-  seed: string,
   blockKey: string,
 ): SealedSet {
-  // SEEDED PER BLOCK, not per site. It was per site — one value for the whole
-  // project — so every block drew the SAME three paragraphs and the decoy
-  // lengths became a site-wide constant an attacker could learn once and apply
-  // everywhere. It also meant that solving one block's four payloads handed
-  // over the decoy list for the entire site, so the advertised 4x was paid
-  // exactly once and the marginal cost on every later block was 1x.
-  //
-  // The site seed still mixes in, which is what stops two projects drawing the
-  // same decoys — that was the original and correct reason for seeding at all.
-  const filler = decoyParagraphs(seed + "\u0000" + blockKey, DECOY_COUNT);
+  const filler = decoyParagraphs(DECOY_COUNT);
   const encoded = filler.map((text) => encode(text, mapping));
 
   // One length for the whole set, so ciphertext size discloses nothing about
