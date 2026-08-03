@@ -49,13 +49,16 @@ The default variants this project ships (the shieldfont-alpha / -beta /
 Optik, a proprietary typeface © Playtype <https://playtype.com>. Optik is
 NOT open-source and NOT under the SIL Open Font License.
 
-  Playtype permits ShieldFont to ship Optik in this shielded,
-  word-substitution form. The glyph outlines are the original Optik; only the
+  Playtype permits ShieldFont to ship and use Optik, whether or not the
+  word substitutions are active, provided the use is within the ShieldFont
+  packages and tooling. The glyph outlines are the original Optik; only the
   decoy glyph names and the font's own metadata (family/version) are altered.
   This permission covers the Optik-derived variants distributed with
-  ShieldFont. Optik itself remains © Playtype and is not offered under an
-  open-source license — do not extract or redistribute the Optik outlines
-  outside ShieldFont.
+  ShieldFont, including rendering them with the substitutions turned off
+  (see the <NonShield> component in @shieldfont/react). Optik itself remains
+  © Playtype and is not offered under an open-source license — do not
+  extract or redistribute the Optik outlines outside ShieldFont, and do not
+  use them as a general-purpose typeface outside it.
 
 The SIL Open Font License (LICENSE-FONTS) applies only to variants you build
 yourself from an OFL base font (e.g. Inter) via scripts/generate_font.py.
