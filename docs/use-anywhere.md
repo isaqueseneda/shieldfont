@@ -130,7 +130,7 @@ cp node_modules/@shieldfont/font/optik-a.woff2 public/fonts/
 **Or CDN (zero setup, version-pinned):**
 
 ```css
-@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css');
+@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css');
 ```
 
 The CDN bundle already declares `@font-face` for `'Optik'` and ships the `.tk9`
@@ -257,19 +257,30 @@ the SSR + font-load-guard pattern worth copying.
 ## Honest caveats (same for every integration)
 
 - **SEO:** search engines index the *decoy*. Never wrap content you want to rank.
-- **Screen readers** skip protected regions; **copy-paste** yields the decoy.
-  `<Shield>` hardcodes `aria-hidden="true"` with no opt-out, so nobody hears a
-  decoy read aloud, and its `a11y` prop renders a real alternative outside the
-  hidden region and before it in DOM order: `mode: "text"` ships the words
-  encrypted in the page for the reader's browser to unlock — a
-  screen-reader-only control by default, so nothing about it shows on screen —
-  or `mode: "audio"` points at a recording you supply. Neither renders a link —
-  that would be a one-line bypass for any scraper that follows it. It needs
-  JavaScript, and its invisible control costs a sighted keyboard user their
-  focus indicator (WCAG 2.2 SC 2.4.7); the numbers and the rest of the limits
-  are in [`plain-text-mode.md`](./plain-text-mode.md). **Every integration on this page is outside
-  React**, so none of that is automatic here: set `aria-hidden` on the encoded
-  region yourself and give it an alternative, or leave that content unwrapped.
+- **Accessibility: a protected block fails WCAG 2.2 SC 1.3.1** and an audit will
+  flag it. If your site is covered by the ADA (including the Title II web rule),
+  Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act
+  2010, or you claim WCAG conformance anywhere, don't wrap content that claim
+  covers. Read
+  [the warning](../README.md#-read-this-first-shieldfont-breaks-accessibility)
+  before you ship.
+- **Screen readers** don't read protected regions in normal linear or heading
+  navigation: `<Shield>` hardcodes `aria-hidden="true"` with no opt-out, so a
+  listener going down the page hears silence rather than a fluent wrong
+  paragraph. Exploration by mouse or touch can still surface decoy words. Beside
+  the hidden block it ships the real words encrypted in the page for the reader's
+  browser to unlock — never a link, which would be a one-line bypass for any
+  scraper that follows it. It needs JavaScript, and an invisible control costs a
+  sighted keyboard user their focus indicator (WCAG 2.2 SC 2.4.7); the numbers
+  and the rest of the limits are in
+  [`plain-text-mode.md`](./plain-text-mode.md). **Every integration on this page
+  is outside React**, so none of that is automatic here: set `aria-hidden` on the
+  encoded region yourself and give it an alternative, or leave that content
+  unwrapped.
+- **The rest of what wrapping a block breaks** — copy-paste, find-in-page,
+  browser translation, Reader Mode, forced fonts, feeds — is in one list:
+  [what protecting a block breaks](./integration.md#what-protecting-a-block-breaks).
+  The forced-font case is the one to read: it is silent, and no guard catches it.
 - **The font is the codebook.** It has to reach the browser to render the page,
   and its composite glyphs are drawn from the original words' own letters, so
   anyone who downloads it can read the substitution table straight back out. We

@@ -39,13 +39,13 @@ wrapper is here, with its limitations stated.
 ---
 
 **Since 0.3.2 this is on by default, and it draws something.** A bare
-`<Shield>` now renders the FULL tier: an outline round the block and a strip
-carrying one sentence and two buttons. Earlier versions drew nothing and put
-the control off-screen where only a screen reader could reach it; the four
-tiers below include that arrangement, and the section after them says why it
-stopped being the default.
+`<Shield>` now renders an outline round the block and a strip carrying one
+sentence and two buttons. Earlier versions drew nothing and put the control
+off-screen where only a screen reader could reach it; that arrangement is still
+one prop away — `wrapper={false}` — and the section below says why it stopped
+being the default.
 
-This page explains what each tier does, what it costs, what it does not fix,
+This page explains what each switch does, what it costs, what it does not fix,
 and how the numbers were chosen.
 
 ```tsx
@@ -58,71 +58,118 @@ That is the whole API. Nothing to generate, nothing to host, no server.
 
 ---
 
-## The four tiers
+## The three switches
 
-Three independent switches — `screenReader`, `explain`, `copyPaste` — make four
-combinations anyone actually ships. There is no `tier` prop; these are names for
-combinations, not an enum.
+`screenReader`, `wrapper` and `copyPaste` are three independent props. There is
+no `tier`, `level` or `mode` prop that bundles them, and no name for any
+particular combination of the three. There used to be four such names in these
+docs and they were deleted: a reader had to memorise which switches each name
+stood for before they could use it, and the switches say the same thing with
+nothing to memorise.
+
+| Prop | Accepts | Default | What it does |
+|---|---|---|---|
+| `screenReader` | `boolean \| { seconds? }` | **on**, unconditionally | Ships the original words sealed behind the puzzle, and the control that opens them. The other two stand on this one. |
+| `wrapper` | `boolean \| ShieldNotice` | **on wherever `screenReader` is on** | Draws the outline and the strip on screen. Never on an inline tag. |
+| `copyPaste` | `boolean \| { notice? }` | **on wherever `screenReader` is on** | Puts a short sentence on the clipboard instead of silent decoy words. |
+
+Two things in that Default column are worth reading twice.
+
+**`wrapper` and `copyPaste` follow whatever `screenReader` resolved to, not the
+literal value `true`.** Both of them open the seal `screenReader` ships, so
+neither means anything without it, and asking for either with it off throws.
+Defaulting them to a literal `true` would have made a bare
+`<Shield screenReader={false}>` — a legitimate choice, made deliberately —
+throw on its own defaults.
+
+**`wrapper` is not drawn on an inline tag.** `<Shield as="span">`, and the same
+for `a`, `em`, `strong`, `b`, `i`, `u`, `small`, `code` and `label`, keeps the
+clipped off-screen control instead. The wrapper is a block-level box, and a
+`<div>` dropped mid-paragraph closes the paragraph early, splits the host
+sentence around a bordered box, and leaves the parsed DOM not matching the server
+HTML. That case is silent because it is reachable by a `<Shield>` nobody edited:
+every existing `<Shield as="span">` would otherwise have grown a box on upgrade.
+Passing `wrapper` *explicitly* on an inline tag throws.
 
 ```tsx
-<Shield>{body}</Shield>                                        // FULL
-<Shield explain={false}>{body}</Shield>                        // INVISIBLE
-<Shield explain={false} copyPaste={false}>{body}</Shield>      // MINIMAL
-<Shield screenReader={false}>{body}</Shield>                   // SEALED SHUT
+<Shield>{body}</Shield>                                        // all three on
+<Shield wrapper={false}>{body}</Shield>                        // nothing drawn
+<Shield wrapper={false} copyPaste={false}>{body}</Shield>      // and copy left alone
+<Shield screenReader={false}>{body}</Shield>                   // no seal at all
 ```
 
-### What each one does
+`explain` was the 0.3.0 and 0.3.1 spelling of `wrapper`. Passing it now throws,
+naming `wrapper` in the message. The value is unchanged — same boolean, same
+object — so the fix is the key and nothing else.
 
-| | **FULL** *(default)* | **INVISIBLE** | **MINIMAL** | **SEALED SHUT** |
+### What each configuration does
+
+| | **Default** *(all three on)* | **`wrapper={false}`** | **`wrapper={false}`<br>`copyPaste={false}`** | **`screenReader={false}`** |
 |---|---|---|---|---|
-| **Screen readers** | Reads the sentence on its own focus stop, then two named buttons. Pressing Uncover grinds the puzzle and the real words are announced. | Identical. The control is real and focusable, clipped off-screen — a listener cannot tell this tier from FULL. | Identical to INVISIBLE. | **Nothing.** The block is `aria-hidden` with no alternative. A reader passes it in silence and is never told there was anything there. |
-| **Missing font** | The strip's sentence swaps to the font-missing wording, the paragraph becomes a skeleton, and the same Uncover button is right there. | The clipped control un-clips itself and draws the identical row — shield, sentence, Uncover — with no box around it. | Same as INVISIBLE. | **Decoy words, in a fallback face.** Fluent, grammatical, wrong English, with nothing on screen to say so. |
+| **Screen readers** | Reads the sentence on its own focus stop, then two named buttons. Pressing Uncover grinds the puzzle and the real words are announced. | Identical. The control is real and focusable, clipped off-screen — a listener cannot tell it from the default. | Identical again. | **Nothing.** The block is `aria-hidden` with no alternative. A reader passes it in silence and is never told there was anything there. |
+| **Missing font** | The strip's sentence swaps to the font-missing wording, the paragraph becomes a skeleton, and the same Uncover button is right there. | The clipped control un-clips itself and draws the identical row — shield, sentence, Uncover — with no box around it. | Same. | **Decoy words, in a fallback face.** Fluent, grammatical, wrong English, with nothing on screen to say so. |
 | **localStorage** | One key per block once solved, holding the puzzle's **answer** — a number, not your text. Reopening is instant; the eraser in the demo bar clears them. | Same. | Same. | **Nothing stored.** There is no puzzle, so there is no answer to keep. |
-| **Settings** | `screenReader` · `explain` · `copyPaste` — all three default on. | `explain={false}` and nothing else. `copyPaste` is independent of the wrapper, so it stays on. | `explain={false} copyPaste={false}` | `screenReader={false}`; the other two throw if passed, because there is nothing for them to open. |
+| **What you pass** | Nothing; all three default on. | `wrapper={false}` and nothing else. `copyPaste` is independent of the wrapper, so it stays on. | Both, explicitly. | `screenReader={false}`; the other two throw if passed, because there is nothing for them to open. |
 
-### What each one costs
+### What each configuration costs
 
-| | FULL | INVISIBLE | MINIMAL | SEALED SHUT |
+| | **Default** | **`wrapper={false}`** | **`wrapper={false}`<br>`copyPaste={false}`** | **`screenReader={false}`** |
 |---|---|---|---|---|
 | **On screen** | An outline and a strip. | Nothing. | Nothing. | Nothing. |
-| **Markup, one block** | 30 elements, 5.1 kB | 17 elements, 3.5 kB | 17 elements, 3.3 kB | 1 element, 247 bytes |
+| **Markup, one block** | 32 elements, ~11 kB | 17 elements, ~9 kB | 17 elements, ~9 kB | 1 element, 247 bytes |
 | **Matchable English** | The whole sentence, the button words, the clipboard notice. | The note and the button name (`"scrambled"`, `"Uncover the plain text"`), plus the clipboard notice. | The note and the button name. | **None.** Nothing a crawler can pattern-match on. |
 | **Copy & paste** | A selection touching protected text lands a short notice saying how to get the real words. | Same. | **Decoy words, silently.** The reader pastes fluent nonsense into their notes and finds out later, or never. | Decoy words, silently. |
-| **WCAG 2.2** | Passes. | Passes. | Passes. | **Fails SC 1.3.1** — what a sighted reader perceives is not programmatically available. Under the EU Accessibility Act or the ADA Title II web rule that is a procurement blocker, not an ethics question. |
+| **Known WCAG 2.2 failures** | **SC 1.3.1.** The words are not programmatically available until a reader completes a JavaScript unlock. | **SC 1.3.1**, plus **SC 2.4.7** — the control is clipped off-screen, so a sighted keyboard user Tabs into something they cannot see. | Same: **1.3.1 + 2.4.7**. | **SC 1.3.1, with no alternative at all.** Under the EU Accessibility Act or the ADA Title II web rule that is a procurement blocker, not an ethics question. |
 
-### Why FULL is the default
+> **This row used to say "Passes" for the first three columns, and that was
+> wrong.** It contradicted the [README warning](../README.md#-read-this-first-shieldfont-breaks-accessibility),
+> and it contradicted *this same file* four hundred lines further down. Nothing
+> in the last two days of work changed the SC 1.3.1 position and nothing can:
+> that position **is** the mechanism. What did change is that the machine-checkable
+> part is now actually checked — `node scripts/axe-audit.mjs` reports zero
+> violations across both the drawn wrapper and the off-screen control, before and
+> after the unlock. A clean axe run is not conformance: axe covers roughly a
+> third of WCAG and cannot judge whether the words a screen reader is handed are
+> the words on the screen, which is the whole question here. **No document in
+> this repository may use the word "pass" about a protected block.**
 
-It was not, in 0.3.0 and 0.3.1. A bare `<Shield>` drew nothing, on the reasoning
-that the wrapper's plain English is the one thing `setCamouflage()` cannot
-rename — it renames attributes and font families, not prose — and so should be
-opted into deliberately.
+### Why all three default on
+
+The wrapper did not, in 0.3.0 and 0.3.1. A bare `<Shield>` drew nothing, on the
+reasoning that the wrapper's plain English is the one thing `setCamouflage()`
+cannot rename — it renames attributes and font families, not prose — and so
+should be opted into deliberately.
 
 That reasoning is intact. The conclusion changed, because of who pays.
 
-This library exists to deter **bots**. Every tier below FULL spends a **human's**
-time to do it, and there are three of them:
+This library exists to deter **bots**. Turning any one of the three off spends a
+**human's** time to do it, and there is a different human behind each:
 
-- the reader on a screen reader, who hears silence where a paragraph was;
-- the reader using their own typeface — dyslexia-friendly, high-contrast, larger
-  — whose stylesheet overrides ours and turns the page to gibberish;
-- the reader who selects a quote for a translator or their notes and gets fluent
-  nonsense with nothing to explain it.
+- `screenReader={false}` — the reader on a screen reader, who hears silence
+  where a paragraph was;
+- `wrapper={false}` — the reader using their own typeface, dyslexia-friendly,
+  high-contrast or larger, whose stylesheet overrides ours and turns the page to
+  gibberish with nothing on screen to say so;
+- `copyPaste={false}` — the reader who selects a quote for a translator or their
+  notes and gets fluent nonsense with nothing to explain it.
 
-FULL is the only tier where none of those three is worse off. A crawler is no
-better off under FULL than under MINIMAL: the words are sealed identically, and
-what FULL adds is a sentence and two buttons — an obstacle to concealment, never
-to the seal.
+With all three on, none of those three is worse off, and each is one prop away
+from being switched back. A crawler is no closer to the words with the wrapper
+drawn than without it: the seal is identical either way, and what the wrapper
+adds is a sentence and two buttons — an obstacle to concealment, never to the
+seal.
 
-**MINIMAL is documented rather than recommended.** Its distinguishing behaviour
-is that copying gives a human decoy words with no notice, which costs a person
-something and costs a crawler nothing.
+**`copyPaste={false}` is documented rather than recommended.** Its distinguishing
+behaviour is that copying gives a human decoy words with no notice, which costs a
+person something and costs a crawler nothing.
 
-**SEALED SHUT is documented rather than hidden.** It is a real choice with a
-real reason — maximum concealment, no signature at all — and a library that hid
-its worst option would not be trustworthy about its best one. Know what you are
-choosing: it fails an accessibility requirement that is law in several places.
+**`screenReader={false}` is documented rather than hidden.** It is a real choice
+with a real reason — maximum concealment, no signature at all — and a library
+that hid its worst option would not be trustworthy about its best one. Know what
+you are choosing: it fails an accessibility requirement that is law in several
+places.
 
-### One thing no tier fixes
+### One thing no switch fixes
 
 A reader who forces their own font can be **detected**, but only partly. If a
 user stylesheet or an extension replaces the family for the whole block, the
@@ -137,8 +184,8 @@ the font actually used to draw a glyph. `CSS.getPlatformFontsForNode` knows, and
 is DevTools-protocol only; `queryLocalFonts()` needs a permission prompt and
 answers a different question — what is installed, not what was used.
 
-This is the strongest argument for FULL. A drawn control does not need to detect
-anything: it is already there when the reader needs it.
+This is the strongest argument for leaving `wrapper` on. A drawn control does not
+need to detect anything: it is already there when the reader needs it.
 
 ---
 
@@ -180,25 +227,63 @@ At build time, each block gets its own **time-lock puzzle** (Rivest–Shamir–W
 1996):
 
 1. Pick two random primes, multiply them to get a number `n`.
-2. Define the key as: start at 2 and square it, over and over, five million
-   times, keeping only the remainder after dividing by `n`.
+2. Define the key as: start at 2 and square it, over and over — 1,680,000 times
+   at the default — keeping only the remainder after dividing by `n`.
 3. Encrypt the block's real text with that key.
 4. Ship `n`, the step count, and the ciphertext. Throw the primes away.
 
-To get the key you have to do those five million squarings. Each one needs the
+To get the key you have to do all 1,680,000 squarings. Each one needs the
 answer to the one before it, so **the work cannot be split up**. A crawler with
-a thousand GPUs still pays five million sequential steps per block. Their only
-advantage is a faster single core — worth maybe three or four times a laptop,
-which is exactly the narrow margin this design wants.
+a thousand GPUs still pays 1,680,000 sequential steps per block. Their only
+advantage is a faster single core — and better software: OpenSSL's hand-written
+Montgomery assembly does about 1,737,000 squarings/second where V8's BigInt does
+259,500. That 6.7x gap is not going away, and the step count is set against it.
 
 **The build is cheap because it holds a trapdoor.** Knowing the two primes
-collapses the tower into two ordinary modular exponentiations. Measured on the
-reference machine: **62 ms to seal a block that costs twenty seconds to open.**
-A two-hundred-block site adds a few seconds to your build.
+collapses the tower into two ordinary modular exponentiations. Measured, median
+of twelve runs: **64 ms to seal one payload** that costs the reader a 14-second
+budget to open.
+
+A block is **four** payloads, not one — the real text plus three decoys — so a
+block costs **261 ms**, and a two-hundred-block site adds about **52 seconds**
+of single-threaded sealing to your build. This paragraph used to say "a few
+seconds", which was true when a block was one payload and wrong by a factor of
+ten afterwards. If that matters for your build, it parallelises: the payloads
+within a block are independent and so are the blocks.
+
+### Four payloads ship, one of them yours
+
+A block does not carry one sealed blob. It carries **four**: the reader's words,
+plus three holding scrambled filler drawn at random from six public-domain works
+(Austen, Shelley, Melville, Doyle, Wells, Kafka). All four are padded to a
+common byte width, so ciphertext length says nothing about which is which, and
+the filler is run through the same word substitution the visible block uses, so
+it matches nothing anywhere and carries the same statistical fingerprint.
+
+The reader pays nothing for this: the browser is **told** which payload is the
+block's own and grinds exactly one. What it costs is an attacker who was
+skipping the page entirely — fetching the HTML, regexing out every
+`{n, t, iv, ct}` blob and grinding them natively, with one script that works on
+every site using this library. That attacker now pays four times over.
+
+**It is a speed bump, not a wall, and the docs will not claim otherwise.** The
+position of the real payload is derived from the block key by a rule that ships
+in the page, so anyone who reads the emitted script learns it. With no server
+there is no fact we hold that they cannot. And the corpus is fixed and public,
+so anyone who solves a payload can run the public `decode()` over the result and
+match it against those six books, which marks it as filler immediately. The
+decoys raise a bulk attacker's cost; they do not create ambiguity.
+
+Which paragraphs get drawn is **random**, via Web Crypto. It used to be derived
+from the camouflage attribute and the block key — both printed in the page,
+using two public exports — so the decoys could be recomputed straight from the
+markup with no CPU and the real payload found by elimination. A reviewer
+demonstrated it on eight blocks out of eight.
 
 That asymmetry is the entire reason for choosing this over a hash chain. A hash
 chain is equally sequential, but the builder pays exactly what the solver pays,
-so the same site would cost half an hour to build.
+so the same two hundred blocks at the 14-second default would cost the better
+part of an hour to build.
 
 ### Freshness
 
@@ -240,42 +325,72 @@ before `<Shield>` renders, so it runs ahead of the solver's first sweep.
 
 ## How hard, and why
 
-The default is `seconds: 20`. That number is chosen against the cost of OCR, and
+The default is `seconds: 14`. That number is chosen against the cost of OCR, and
 the reasoning matters more than the figure.
 
 **A crawler that wants your words never has to touch this puzzle.** It can
-render the page and read the pixels: about one second of CPU to render, about
-two to OCR. Call it **three seconds of server CPU per page**. That is the floor
-on ShieldFont's protection, it exists whether or not this feature does, and no
-amount of cryptography raises it.
+render the page and read the pixels. Measured 2026-08: render plus OCR is about
+**5.0 CPU-seconds for a real article page** — Tesseract costs ~2.7 ms per *word*
+(it tracks text volume, not pixels), a real page carries ~750 words once nav,
+sidebar, comments and footer are counted, and a measured 12% of pages need a
+retry. That is the floor on ShieldFont's protection, it exists whether or not
+this feature does, and no amount of cryptography raises it.
 
-So the target is not "expensive". The target is **not cheaper than OCR**. Set
-the puzzle a bit above three server-seconds and the plain-text mode is no longer
-the weak link — which is the only property that was ever needed.
+So the target is not "expensive". The target is **not dearer than OCR**, and the
+budget is per *block*, because that is what gets sealed. Five blocks on a page
+means a page's worth of OCR divided five ways:
 
-This also means **difficulty has a ceiling**. Past the OCR cost, a crawler just
-takes the cheaper door, so extra difficulty buys nothing at all and is paid for
-entirely by disabled readers waiting longer. Twenty is near the top of the
-useful range. `sealText` refuses anything above 120 seconds and anything below
-five.
+```
+budget/block = 5.0 CPU-s ÷ 5 blocks       = 1.00 CPU-s
+t            = 0.97 × 1.00 × 1,737,000    ≈ 1,680,000 squarings
+crawler pays = 1,680,000 ÷ 1,737,000      = 0.97 CPU-s, i.e. 97% of the floor
+```
+
+97% rather than 100% on purpose: the 5.0 CPU-s figure is a measurement, not a
+constant, and overshooting it is the one direction with no upside.
+
+This also means **difficulty has a ceiling, and 14 sits at it**. Past the OCR
+cost, a crawler just takes the cheaper door, so extra difficulty buys nothing at
+all and is paid for entirely by disabled readers waiting longer. `sealText`
+refuses anything above 30 seconds and anything below 1 — a sanity bound against
+a typo, not a security threshold.
+
+**These numbers replaced an earlier set that was wrong in three places at
+once.** The old default of 20 seconds was reasoned from ~3 CPU-seconds of OCR
+per page, an assumption that server cores run 3-4x a laptop on bignum work
+(they do not — they are equal to slightly slower), and a per-*page* costing of a
+per-*block* mechanism. Together those billed a crawler about ten times the OCR
+floor, and disabled readers paid for all of it.
 
 ### Measured numbers
 
 | | |
 |---|---|
-| Sealing one block | ~62 ms |
+| Sealing one payload | ~64 ms (median of twelve runs) |
+| Sealing one block | ~261 ms |
+| Payloads per block | 4 — one real, three decoys |
 | Modulus | 2048-bit |
-| Default step count | 5,000,000 sequential squarings |
-| Chrome, desktop, `seconds: 20` (the default) | **7.6 s** |
-| Chrome, desktop, `seconds: 10` | **4.0 s** |
-| Reference rate used for labelling | 250,000 squarings/second |
+| Default step count | 1,680,000 sequential squarings |
+| Warmed Chrome worker, Apple Silicon, `seconds: 14` (the default) | **~2.5 s** |
+| Reference rate used for labelling | 120,000 squarings/second |
+| V8 BigInt, measured | 259,500 squarings/second |
+| OpenSSL Montgomery assembly, measured | 1,737,000 squarings/second |
 
-The reference rate is deliberately conservative — roughly a mid-range phone
-rather than a current desktop. `seconds` is therefore a **budget denominated on
-a slow device**, not a promise about yours: a desktop finishes well inside it,
-an old phone may exceed it. The button says "up to 20 seconds" for that reason —
-a ceiling, not a point estimate — and within about 80 ms of a press the live
-status line replaces it with a real measurement taken on the actual device.
+The reference rate is an **honest median** — roughly a mid-range phone, or
+Safari, which trails V8 on BigInt — not a fast desktop. `seconds` is therefore a
+**budget denominated on an ordinary device**, not a promise about yours: a
+current desktop finishes well inside it, an old phone may exceed it. The button
+says "up to 14 seconds" for that reason — a ceiling, not a point estimate — and
+within about 80 ms of a press the live status line replaces it with a real
+measurement taken on the actual device.
+
+The rate used to be 250,000 and this file called that "deliberately
+conservative". It was not: V8 BigInt on an Apple M1 Max does 259,500
+squarings/second, so the old figure was 96% of one of the fastest consumer cores
+in existence, described as a slow one. Every author who reasoned from it was
+told their readers would wait N seconds and their readers waited longer. The
+number moved **down**, so the same `seconds` now buys fewer steps: that is the
+correction, not a weakening.
 
 A larger modulus is *not* more secure here. It makes each squaring slower, so
 the same wait buys fewer sequential steps and the puzzle gets **cheaper** for the
@@ -285,16 +400,17 @@ crawler. 2048 bits is the sweet spot.
 
 ## What the reader hears
 
-> **This section describes the INVISIBLE tier** — `<Shield explain={false}>`.
-> It was written when that was the default. FULL draws the same control in a
-> visible strip; everything below about what is *spoken* applies to both, and
-> everything about what is *not drawn* applies only here.
+> **This section describes a block with `wrapper={false}`** — the off-screen
+> control. It was written when that was the default. With the wrapper on, the
+> same control is drawn in a visible strip; everything below about what is
+> *spoken* applies to both, and everything about what is *not drawn* applies only
+> with the wrapper off.
 
 Everything below was shaped by listening to it. The first version passed its
 markup tests and was unpleasant to use; most of these decisions exist because of
 a specific sentence heard in a real VoiceOver session.
 
-### On this tier the control is invisible
+### With the wrapper off, the control is invisible
 
 The note and the button are clipped off-screen and left in the accessibility
 tree. A sighted reader can already read the block perfectly — the font does that
@@ -303,7 +419,7 @@ fine, is an unexplained widget and nothing else.
 
 That argument holds for the reader who can see the words. It does not hold for
 the reader whose custom typeface has turned them to gibberish, or who reaches
-for copy-paste, and that is why FULL exists and is now the default.
+for copy-paste, and that is why the wrapper exists and is now drawn by default.
 
 ### The cost of that: keyboard focus disappears
 
@@ -342,7 +458,7 @@ it falls back to `<p>`, or `<span>` inline.)
 
 ### Every button has the same name, on purpose
 
-> Uncover the original text (up to 20 seconds)
+> Uncover the original text (up to 14 seconds)
 
 **This inverted in 0.3.2 and the reason is worth stating.** The name used to
 carry the element type and the block's position — "Unlock the plain text for
@@ -350,14 +466,14 @@ paragraph 2" — so that a listener meeting four buttons could tell them apart.
 Then unlocking became page-wide: pressing any one button opens every block. Four
 different names would describe four different actions where there is one.
 
-The noun comes from `as`: heading, paragraph, quote, list item, caption, or
-**section** for anything else (including the default `<div>`). The number counts
-text-mode blocks on the page.
+**The button name now carries no noun and no ordinal at all.** It is the same
+string on every block, because one press is the same action on every block.
 
-Identical labels were the problem. Every block used to render the same sentence,
-which is fine on a one-block demo and unusable on an article: two buttons on one
-page were indistinguishable by ear, so a reader who wanted the third one had to
-activate buttons until they guessed right.
+The noun and the ordinal still exist — `heading`, `paragraph`, `quote`, `list
+item`, `caption`, or **section** for anything else including the default
+`<div>`, each counted within its own kind so a page of h2 / p / h2 announces
+"heading 1", "paragraph 1", "heading 2" — but they are only used if you supply a
+group name for the wrapper. Nothing generates them into the button.
 
 `label` overrides the whole string. **Never put the protected words in it.** The
 label ships in the HTML, so a label quoting the text you are hiding hands it to
@@ -443,10 +559,10 @@ Details that matter, and why:
 
 ```tsx
 <Shield
-  as="h2"
+  as="p"
   a11y={{
     mode: "text",
-    seconds: 20,          // 5..120, default 20
+    seconds: 14,          // 1..30, default 14
     reveal: "hidden",     // "hidden" (default) | "visible"
     label: undefined,     // overrides the button's accessible name
     note: undefined,      // overrides the explanatory sentence
@@ -459,19 +575,23 @@ Details that matter, and why:
 
 | Option | Default | What it does |
 |---|---|---|
-| `seconds` | `20` | Grind time on the reference device. Range 5..120. Read "How hard, and why" before raising it. |
+| `seconds` | `14` | Grind time on the reference device. Range 1..30. Read "How hard, and why" before raising it. |
 | `reveal` | `"hidden"` | `"hidden"` puts the words in the page for assistive technology only; `"visible"` replaces the encoded block on screen. |
-| `label` | element type + position | The button's accessible name. Must not quote the protected words. |
+| `label` | *"Uncover the original text (up to N seconds)"* | The button's accessible name — the same on every block, because one press uncovers them all. Must not quote the protected words. |
 | `note` | the sentence above | The explanatory sentence for this block. |
 | `visualHidden` | `true` | Clips the whole control off-screen while keeping it in the accessibility tree. `false` puts it on screen. |
 
 > **These four — `reveal`, `visualHidden`, `label` and `note` — configure the
-> OFF-SCREEN control, so they apply to the INVISIBLE and MINIMAL tiers only.**
-> Passing any of them together with the drawn wrapper throws, naming the ones it
-> found and what to use instead. Until 0.3.2 they were ignored in silence, which
-> meant a page that set them and changed nothing else rendered differently on
-> upgrade with nothing to say so. Wording moves to `explain={{ text }}`; the
-> off-screen control itself is `explain={false}`.
+> OFF-SCREEN control, so they apply only where `wrapper={false}`.** Passing any
+> of them together with the drawn wrapper throws, naming the ones it found and
+> what to use instead. Until 0.3.2 they were ignored in silence, which meant a
+> page that set them and changed nothing else rendered differently on upgrade
+> with nothing to say so. Wording moves to `wrapper={{ text }}`; the off-screen
+> control itself is `wrapper={false}`. The wrapper takes a `className` of its
+> own — `wrapper={{ className }}`, applied to the frame `<div>` — because
+> `<Shield className>` already lands on the encoded block and on the revealed
+> output, and widening it to the frame would have retargeted stylesheets that
+> already exist.
 
 ---
 
@@ -522,11 +642,19 @@ the script wires it by. None of this is visible at all unless you set
 - **`@guidepup/virtual-screen-reader`, driven by Playwright.** A real
   implementation of accessibility-tree semantics, not a markup assertion, run
   over multi-block pages in both reveal modes.
+- **Real NVDA on a Windows runner, in CI on every commit.** `npm run
+  test:a11y:nvda`.
 - **Real VoiceOver on macOS, by hand.** This is what found the group chatter,
   the truncated announcements and the text nobody could get back to. Every
   decision in "What the reader hears" that cites a session came from here.
-- **NVDA and JAWS are unverified.** Nobody has run this under either.
-- **No axe scan, and no published test page.**
+- **axe-core, `npm run test:axe`.** Scans both the drawn and the off-screen
+  arrangements, before and after the unlock, and reports zero violations across
+  WCAG 2.0/2.1/2.2 A and AA. **This is not a pass and not conformance.** axe
+  covers roughly a third of WCAG, and it cannot judge whether the words handed
+  to a screen reader are the words on the screen — which is the entire question
+  here. Nothing in this repository may use it to imply otherwise.
+- **JAWS is unverified.** Nobody has run this under it.
+- **No published test page**, and no human-reviewed screen-reader recording.
 
 The focus-visible failure described above is known and unfixed. Do not read this
 list as a conformance claim.
@@ -539,7 +667,7 @@ Said plainly, because the launch should not claim otherwise:
 
 - **It is not conformance, and it never becomes conformance.** A protected block
   fails WCAG 2.2 SC 1.3.1 with this mode on. The words are not programmatically
-  determinable; they are obtainable, after 5–20 seconds of the reader's CPU,
+  determinable; they are obtainable, after a few seconds of the reader's CPU,
   with JavaScript. No auditor is obliged to accept that as equivalent and we do
   not ask them to. What this mode buys is that the words are always *reachable*
   by a human who wants them. That makes a protected page humane. It does not
@@ -580,8 +708,8 @@ The puzzle is independent of React and is exported for tooling:
 ```js
 import { sealText, solveText } from "@shieldfont/core/puzzle";
 
-const sealed = sealText("The words to protect.", { seconds: 20 });
-// → { n: "…", t: 5000000, iv: "…", ct: "…" }
+const sealed = sealText("The words to protect.", { seconds: 14 });
+// → { n: "…", t: 1680000, iv: "…", ct: "…" }
 
 solveText(sealed); // really does the work; takes as long as it promises
 ```

@@ -19,18 +19,32 @@ the few rules we actually enforce.
   with nothing required from the author — sealed into the page at build
   time, opened by the reader's own browser (see
   [`docs/plain-text-mode.md`](./docs/plain-text-mode.md)). It has been
-  driven under `@guidepup/virtual-screen-reader` in Playwright and by
-  hand with real **VoiceOver on macOS**, which is what found most of the
-  bugs worth finding. Four things remain open, and help on any of them is
-  valued above almost anything else:
-  - **NVDA and JAWS are unverified.** Nobody has run either against it.
-    Given how much the VoiceOver session changed, expect Windows screen
-    readers to have their own list.
-  - **A sighted keyboard user loses their focus indicator.** The text
-    mode's control is screen-reader-only by default, so Tabbing through
-    the page without a screen reader lands on something invisible —
-    **WCAG 2.2 SC 2.4.7**. `visualHidden: false` restores an on-screen
-    control, which is an escape hatch and not an answer.
+  driven under `@guidepup/virtual-screen-reader` in Playwright, against
+  **real NVDA on a Windows runner in CI on every commit**, and by hand
+  with real **VoiceOver on macOS**, which is what found most of the
+  bugs worth finding. `npm run test:axe` adds an axe-core scan reporting
+  zero violations before and after the unlock. axe covers roughly a third
+  of WCAG and cannot judge whether the words handed to a screen reader are
+  the words on screen, which is the whole question here, so a clean run is
+  not a pass and is not conformance. `npm run test:style` runs beside it
+  and measures the drawn wrapper — contrast, hit targets, overflow,
+  perceivable boundaries — inside seventeen deliberately hostile host
+  pages; sixteen come back clean and one is a documented known limit,
+  where the host's own body text is already below the contrast line and
+  the wrapper, which inherits the host's text colour on purpose, cannot
+  be more legible than the page it sits in. That settles seventeen hosts
+  and says nothing about the eighteenth.
+  Four things remain open, and help on any of them is valued above
+  almost anything else:
+  - **JAWS is unverified.** Nobody has run it against this. Given how
+    much the VoiceOver session changed, expect it to have its own list.
+  - **A sighted keyboard user loses their focus indicator under
+    `wrapper={false}`.** The drawn wrapper is the default and its
+    buttons are real, visible and focus-visible; turn it off and the
+    control is clipped off-screen, so Tabbing through the page without a
+    screen reader lands on something invisible — **WCAG 2.2 SC 2.4.7**.
+    `visualHidden: false` restores an on-screen control in that case,
+    which is an escape hatch and not an answer.
   - **The non-React tiers ship none of it.** The CDN paste-in and
     `@shieldfont/core` leave `aria-hidden` and the alternative entirely
     to the author. The puzzle primitive is already framework-free

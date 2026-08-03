@@ -9,17 +9,35 @@ The **no-build / CDN** distribution of ShieldFont: the web fonts, a paste-in
 - **Static site / Wix / WordPress / plain HTML?** You're in the right place: a
   `<link>`/`@import` and no toolchain.
 
+> [!CAUTION]
+> **ShieldFont harms accessibility, on purpose, and no setting turns that off.**
+> It withholds the real text of a protected block from the page source, so a
+> protected block **fails WCAG 2.2 SC 1.3.1**: the words are not programmatically
+> available to assistive technology at all. This tier ships **none** of the
+> accessible-alternative machinery that `@shieldfont/react` has, so on a
+> paste-in page the alternative is yours to build by hand, or the content stays
+> unwrapped. If the ADA (including the Title II web rule), Section 508, the
+> European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to
+> your site — or you claim WCAG conformance anywhere on it — don't paste this
+> onto content that claim covers. It is for an author's own essays, fiction and
+> blog posts, by their own informed choice; not for government,
+> procurement-bound or service-critical content. Full statement:
+> [the accessibility warning](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility).
+> What else it breaks for a human reader — copy-paste, find-in-page,
+> translation, Reader Mode, forced fonts, feeds:
+> [what protecting a block breaks](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
+
 ## Install via CDN (jsDelivr, served from npm: the repo can stay private)
 
 ```html
 <link rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css">
+      href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">
 ```
 or in your CSS:
 ```css
-@import url("https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css");
+@import url("https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css");
 ```
-Always pin the version (`@0.3.0`), never `@latest`: a site that paste-installs a
+Always pin the version (`@0.3.2`), never `@latest`: a site that paste-installs a
 URL is pinned to whatever it pasted.
 
 ## Three steps
@@ -92,7 +110,7 @@ visitor.
 <!-- An authoring tool: paste text, copy the encoded result into your CMS. -->
 <script type="module">
   import { encode, alpha } from
-    "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont-encoder.js";
+    "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont-encoder.js";
   document.querySelector("#out").textContent = encode("Your text here", alpha);
 </script>
 ```
@@ -119,7 +137,7 @@ visitor.
 
 Every font file self-reports its generation in the name table
 (nameID 5 reads `Version 18.0`, the mapping generation the font was built
-against). This npm package is versioned separately: currently `0.3.0`.
+against). This npm package is versioned separately: currently `0.3.2`.
 
 ## License
 

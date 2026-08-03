@@ -2,11 +2,17 @@
 
 There is exactly one rule in ShieldFont:
 
-> **Your original text must never ship to the browser.**
+> **Your original text must never ship to the browser in readable form.**
 
 Everything else is detail. This page shows what that means in practice, because
 the two ways people break it both *look correct* and both fail **silently in
 production**.
+
+The qualifier is load-bearing and is not a loophole. With `screenReader` on —
+the default in `@shieldfont/react` — each block also ships its real words
+**encrypted**, sealed behind a time-lock puzzle the reader's browser has to
+grind out. That is the accessible path. It is ciphertext, it never matches the
+grep below, and removing it is not how you satisfy the rule.
 
 We did not reason this out. We built five real apps against the published
 packages and grepped the output for the plaintext. The results are below.

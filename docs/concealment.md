@@ -45,7 +45,9 @@ The camouflage story, tier by tier.
 
 ### React: most decoy
 
-Neutral font family (`"Optik"`), neutral filename, no version hint. Nothing on the page announces that the text is protected: no class name you didn't choose, no package URL, no `"ShieldFont"` string anywhere in the served bytes. This is the most camouflaged tier and the reason it's the recommendation.
+Neutral font family (`"Optik"`), neutral filename, no version hint. No class name you didn't choose, no package URL, no `"ShieldFont"` string anywhere in the served bytes, and `setCamouflage({ hash })` makes even those neutral names per-project unique. This is the most camouflaged tier and the reason it's the recommendation.
+
+**With one deliberate exception, and it is the default.** A bare `<Shield>` draws the reader-facing wrapper: an outline round the block and a strip carrying one plain-English sentence and two named buttons. Every word of that is a string a crawler can match on, and camouflage cannot reach any of it — hashes rename attributes and font families, not prose. That is a trade the project makes on purpose, because the alternative costs a human reader rather than a bot: the reader on a screen reader, the reader whose own typeface turns the page to gibberish, the reader who copies a quote and pastes fluent nonsense. Turning the wrapper off restores the silent page and takes those costs back on. The wording is also yours to change, and a wrapper that appears above *unprotected* text too stops being evidence of anything.
 
 ### CDN: the least concealed way to run this, and that is on purpose
 

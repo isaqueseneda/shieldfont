@@ -44,7 +44,10 @@ React Server Component:
 
 1. **In Node, during the server render** (or at build time for a static export),
    `<Shield>` encodes its children — a plain string — with one of the bundled
-   dictionaries. Your original text never reaches the browser.
+   dictionaries. Your original text never reaches the browser in readable form.
+   (It does reach it **encrypted**: `screenReader` is on by default, so each
+   block also ships its real words sealed behind a time-lock puzzle. That is
+   ciphertext, which is why the `grep` above still returns zero.)
 2. The encoded text is what gets serialized into the HTML response.
 3. The component injects an `@font-face` `<style>` block plus a small font-load
    guard script.
@@ -56,21 +59,37 @@ Which dictionary? By default `<Shield>` **rotates** across `alpha`, `beta` and
 `variant="alpha"` to pin one. (`maxhide` is opt-in only and never auto-selected.)
 
 The browser fetches the font from `public/fonts/`, applies the GSUB ligatures,
-and the visible text becomes the original meaning. Scrapers reading the HTML
-never see the original.
+and the visible text becomes the original meaning. A scraper reading the HTML
+gets the decoy — and, beside it, a sealed payload it would have to grind
+sequentially, per block, to recover anything.
+
+You will also see a box drawn around the protected paragraph, with a sentence
+and a Copy and an Uncover button. That is the `wrapper`, on by default since
+0.3.2 and part of what a bare `<Shield>` renders; `wrapper={false}` removes it
+and keeps the same control clipped off-screen.
 
 ## Accessibility
 
-Every `<Shield>` here passes `a11y={{ mode: "text", seconds: 5 }}`. The encoded
-block is `aria-hidden`, so without an alternative a screen-reader user gets
-nothing at all — a WCAG 2.2 SC 1.3.1 failure. This mode seals the real words
-into the page and lets the reader's own browser grind out the key; there is no
-URL for a scraper to follow. `seconds` is lowered here so the demo is quick;
-leave it at the default (20) in production, and read
+Every `<Shield>` here is bare — no `a11y` prop at all — because the accessible
+path is on by default and the demo should show what the docs describe. (It used
+to pass `a11y={{ mode: "text", seconds: 5 }}`, left over from when the path was
+opt-in, which quietly demonstrated a 5-second puzzle against a real default of
+14.) The encoded block is `aria-hidden`, so without an alternative a
+screen-reader user gets nothing at all — a WCAG 2.2 SC 1.3.1 failure. The
+default mode seals the real words into the page and lets the reader's own
+browser grind out the key; there is no URL for a scraper to follow. Read
 [`docs/plain-text-mode.md`](../../docs/plain-text-mode.md) for the real limits,
 including which screen readers are actually verified.
 
 ## What stays plain
 
-Only elements wrapped in `<Shield>` are protected. The `<h1>` heading, the meta
-`<p>` underneath, and any other content stays in your normal page font.
+Only elements wrapped in `<Shield>` are protected. The `<h1>` heading and the
+meta `<p>` underneath stay in your normal page font.
+
+The `<h2>` uses **`<NonShield>`**: real, indexable, readable words rendered in
+the same Optik face as the shielded paragraph. Do not reach for
+`font-family: Optik` to get that effect — the shipped `optik-*.woff2` are
+*shielded* builds whose substitutions ride the `ccmp` feature, and the
+dictionary is an involution, so plain English through one renders the **decoy**
+with nothing anywhere reporting a problem. `<NonShield>` sets
+`font-feature-settings: "ccmp" 0` to switch that off.

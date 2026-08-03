@@ -33,20 +33,26 @@ Live site: <https://shieldfont.org>
 
 ## 🟡 Accessibility layer
 
-*Nobody hears gibberish. `<Shield>` marks the encoded block
-`aria-hidden="true"`, so assistive software skips it rather than
-voicing a decoy, and the `a11y` prop puts a real alternative in the
-accessibility tree beside it. Since the plain-text mode landed, the
-author has to produce nothing at all for the text route:
-`a11y={{ mode: "text" }}` on its own is a complete configuration. It
-has been driven through a virtual screen reader in CI and by hand with
-real VoiceOver on macOS. What is still open is **NVDA and JAWS**, the
-focus indicator a sighted keyboard user loses to an invisible control,
-and that the CDN and `@shieldfont/core` tiers ship none of this
-machinery.*
+*Nobody hears a decoy read to them in ordinary reading order. `<Shield>`
+marks the encoded block `aria-hidden="true"`, so assistive software
+skips it in linear and heading navigation rather than voicing a decoy —
+though mouse-tracking, screen review and touch exploration read the DOM
+by position and can still land on a decoy word — and the `a11y` prop
+puts a real alternative in the accessibility tree beside it. Since the
+plain-text mode landed, the author has to produce nothing at all for the
+text route: `a11y={{ mode: "text" }}` on its own is a complete
+configuration. It has been driven through a virtual screen reader in CI,
+through **real NVDA on a Windows runner in CI on every commit**, and by
+hand with real VoiceOver on macOS. **None of this is WCAG
+conformance and none of it is planned to become conformance** — see the
+warning at the top of the README. What is still open is **JAWS**, the
+focus indicator a sighted keyboard user loses to an
+invisible control, the reader whose browser forces its own font and gets
+a fluent decoy with no signal at all, and that the CDN and
+`@shieldfont/core` tiers ship none of this machinery.*
 
-**Shipping now: an alternative rendered outside the hidden region, in
-two shapes.**
+**Shipping now: a real alternative rendered outside the hidden
+region.**
 
 `<Shield>` keeps `aria-hidden="true"` on the encoded block, because
 voicing a decoy is worse than voicing nothing: it is fluent, wrong,
@@ -61,22 +67,19 @@ DOM order:
   control is **screen-reader-only by default**: nothing about it appears
   on screen, the unlocked words go to assistive technology clipped
   off-screen, and the encoded block stays visible and unchanged. Optional
-  `seconds` (20, range 5..120), `reveal: "hidden" | "visible"`, `label`,
-  `note` and `visualHidden` (default `true` here, `false` for audio).
+  `seconds` (14, range 1..30), `reveal: "hidden" | "visible"`, `label`,
+  `note` and `visualHidden` (default `true`).
   Full reference: [`docs/plain-text-mode.md`](docs/plain-text-mode.md).
-- `{ mode: "audio", src }` renders a native `<audio controls>` plus a
-  short prose note explaining why it is there. Generate the file **at
-  build time** from your original text.
 - `{ mode: "none" }` is an explicit, auditable opt-out. Omitting the
   prop entirely logs one dev-time warning.
 
-**Why the text mode is not a link.** Two things shipped in `0.2.0` and
-were both removed: a `{ mode: "text", href }` linking a plain-text copy
-on its own URL, and an optional `transcript` link on the audio mode.
-One reason for both. A URL cannot be handed to a screen reader without
+**Why the text mode is not a link.** `0.2.0` shipped a
+`{ mode: "text", href }` linking a plain-text copy on its own URL, and
+it was removed — as was every other link this layer ever offered, for
+the same reason. A URL cannot be handed to a screen reader without
 being handed to everyone else, and the same crawl that reads the decoy
 reads the link sitting beside it — one line of scraper code follows it
-and gets the original. A block carrying either was strictly less
+and gets the original. A block carrying one was strictly less
 protected than an unwrapped one while still looking protected.
 
 The mode that came back inverts that trade instead of repeating it. The
@@ -87,8 +90,9 @@ is `2^(2^T) mod n` — T sequential squarings, each needing the answer to
 the one before, so the work **cannot be parallelised**. A crawler with a
 thousand GPUs still pays T sequential steps per block; its only edge is
 a faster single core. The builder holds the trapdoor (it knows `p` and
-`q`, which collapses the tower to two modexps), so sealing costs **62 ms
-per block** against a default budget of twenty seconds of the reader's
+`q`, which collapses the tower to two modexps), so sealing costs **~64 ms
+per payload — ~261 ms for a block's four** against a default budget of
+fourteen seconds of the reader's
 own CPU, and the primes are discarded and never returned. Fresh primes per block per build: solving
 one block teaches nothing about the next, and every redeploy invalidates
 every solution already computed — including your readers' caches, which
@@ -96,53 +100,49 @@ is the same property working in both directions.
 
 **Difficulty is bounded above by OCR, not by paranoia.** A crawler that
 wants the words can always render the page and read the pixels for
-roughly three seconds of server CPU, whether or not this feature exists.
+roughly five seconds of server CPU, whether or not this feature exists.
 That is the floor on the whole package's protection and no cryptography
 raises it. So the target was never "expensive", it is **not cheaper than
 OCR** — enough that the accessible path stops being the *shortcut*, and
 no further. Past that point extra difficulty buys nothing (the crawler
 takes the cheaper door) and is paid for entirely by disabled readers
-waiting longer. Default `seconds: 20`, accepted range 5..120. State the
+waiting longer. Default `seconds: 14`, accepted range 1..30. State the
 ceiling wherever you state the default, or someone will "harden" a page
 by raising it.
 
-Measured: 2048-bit modulus, 5,000,000 sequential squarings at the
-default, and **7.6 s to open it in Chrome on a desktop**. The rate used
-for labelling — 250,000 squarings/second — is deliberately conservative,
-roughly a mid-range phone, so `seconds` is a budget denominated on a slow
-device rather than a promise about any particular one.
+Measured: 2048-bit modulus, 1,680,000 sequential squarings at the
+default, and **about 2.5 s to open it in a warmed Chrome worker on Apple
+Silicon**. The rate used for labelling — 120,000 squarings/second — is an honest
+median rather than a fast desktop: roughly a mid-range phone, or Safari, which
+trails V8 on BigInt. So `seconds` is a budget denominated on an ordinary device
+rather than a promise about any particular one. It was 250,000 and described as
+"deliberately slow", which was false — that is 96% of one of the fastest
+consumer cores in existence — so the number moved **down** and the same
+`seconds` now buys fewer steps.
 
-**What the invisible control costs.** `visualHidden` clips with
-`clip-path` rather than `display:none`, so the control stays in the
-accessibility tree; removing it from the tree is the exact bug the prop
-exists to fix. For `mode: "text"` it now defaults to **`true`** — the
-whole control is screen-reader-only, because a sighted reader can already
-read the block and would otherwise get an unexplained widget attached to
-text that looks fine. The price is real: a sighted person navigating by
-keyboard **without** a screen reader Tabs into a control they cannot see
-and loses their focus indicator, which fails **WCAG 2.2 SC 2.4.7**. The
+**What the invisible control costs, where it is still invisible.** Since
+0.3.2 the drawn `wrapper` is the default, and its Copy and Uncover
+buttons are real, on screen and `:focus-visible`. `visualHidden` now
+applies only where `wrapper` is off — passing it alongside a drawn
+wrapper throws. Where it does apply it clips with `clip-path` rather
+than `display:none`, so the control stays in the accessibility tree;
+removing it from the tree is the exact bug the prop exists to fix. It
+defaults to **`true`** there, on the old reasoning that a sighted reader
+can already read the block and would otherwise get an unexplained widget
+attached to text that looks fine. The price is real, and it is what
+`wrapper={false}` now buys: a sighted person navigating by keyboard
+**without** a screen reader Tabs into a control they cannot see and
+loses their focus indicator, which fails **WCAG 2.2 SC 2.4.7**. The
 skip-link remedy (clipped until focused, visible while focused) was
 deliberately not taken, because the control was asked to be invisible.
-`visualHidden: false` restores an on-screen control. The audio mode keeps
-its player on screen by default: a player nobody can see is a player
-nobody can press.
+Leaving `wrapper` alone, or `visualHidden: false`, puts a control back
+on screen.
 
 **React only.** If you use the paste-in CDN stylesheet or
 `@shieldfont/core` directly, none of the above happens for you: you set
 `aria-hidden` on the encoded region yourself, and you supply the
 alternative yourself. Closing that gap for the non-React tiers is part
 of what remains.
-
-**Audio is synthesised at build time, never in the browser.** A
-`speechSynthesis` button reading the rendered page would voice the
-decoy; one reading the original would require shipping the original to
-the browser in the clear, which is the leak the whole architecture
-exists to prevent. Synthesis belongs in the build, where the plaintext
-already lives. Free offline paths exist (`piper` on CI, `say` on
-macOS), so this adds no runtime dependency and no per-request cost.
-(The text mode *does* work in the browser, and does not contradict
-this: what it ships is ciphertext, and the reader's CPU is the price of
-opening it.)
 
 **What this does not fix, and we will not pretend otherwise:**
 
@@ -164,24 +164,16 @@ opening it.)
 - **Once revealed, the plaintext is in the DOM.** A crawler that runs a
   real browser, presses the button and waits gets the words, having paid
   the cost. That is the deal, not a leak.
-- **Audio still fails WCAG 2.2 SC 1.2.1 (Level A).** Audio-only content
-  with no text alternative fails that criterion, the audio mode's
-  `transcript` link was this layer's only answer to it, and the text mode
-  does **not** rescue it — they are separate alternatives an author picks
-  between, so a block using `{ mode: "audio" }` alone still has no way to
-  satisfy 1.2.1. Do not let the good news blur that.
-- An audio track is also still not a document: not navigable by heading,
-  not searchable, not quotable, not skimmable.
 
 **Still open, contributors wanted:**
 
-- **NVDA and JAWS.** The text mode is verified under
-  `@guidepup/virtual-screen-reader` in Playwright and by hand with real
+- **JAWS.** The text mode is verified under
+  `@guidepup/virtual-screen-reader` in Playwright, against **real NVDA
+  on a Windows runner on every commit**, and by hand with real
   **VoiceOver on macOS** — which is where the group chatter, the
   announcements that cut each other off and the text that could not be
-  re-read were all found. Windows is untouched: **NVDA and JAWS remain
-  unverified**, and every fix VoiceOver forced is a reason to expect
-  they will find their own.
+  re-read were all found. **JAWS remains unverified**, and every fix
+  VoiceOver forced is a reason to expect it will find its own.
 - **A focus indicator for sighted keyboard users.** The invisible
   control fails WCAG 2.2 SC 2.4.7 for anyone Tabbing without a screen
   reader (above). `visualHidden: false` is an escape hatch, not an
@@ -216,30 +208,110 @@ Acceptance criteria, and where we stand against them:
   rendered output.
 - A naive scraper (BeautifulSoup + `.get_text()`) still sees scrambled
   text, and the alternative is not plaintext in the DOM. **Met**, and
-  more cleanly than before: the alternative is either an audio file or a
-  ciphertext, and there is no longer any link to follow either. This
-  criterion is what killed the old `{ mode: "text", href }` and the
-  audio mode's `transcript` link, and it is the criterion the new text
+  more cleanly than before: the alternative is a ciphertext, and there
+  is no link to follow anywhere. This criterion is what killed the old
+  `{ mode: "text", href }`, and it is the criterion the new text
   mode was designed against — retrieval costs sequential compute rather
   than a fetch, so `.get_text()` gets the decoy and a real crawler pays
   more than it would pay for OCR.
-- NVDA, JAWS and VoiceOver all reach the alternative and play or open
-  it without sighted assistance. **VoiceOver: partially met**, by hand
-  on macOS, alongside an automated pass under
+- NVDA, JAWS and VoiceOver all reach the alternative and open it
+  without sighted assistance. **NVDA: met**, driven by real NVDA on a
+  Windows runner in CI on every commit. **VoiceOver: partially met**, by
+  hand on macOS, alongside an automated pass under
   `@guidepup/virtual-screen-reader` in Playwright. The manual session is
   what found the group chatter, the truncated announcements and the
-  revealed text that could not be re-read, all now fixed. **NVDA and
-  JAWS: not done.** Neither has been run against it.
+  revealed text that could not be re-read, all now fixed. **JAWS: not
+  done.** It has never been run against it.
 - Published test page with a human-reviewed screen-reader recording
-  and automated axe/WCAG scans. **Not done.** No axe scan has been run
-  and no test page is published.
+  and automated axe/WCAG scans. **Partly done.** `scripts/axe-audit.mjs` scans both tiers,
+  before and after the unlock, and reports zero violations across
+  WCAG 2.0/2.1/2.2 A and AA — but axe covers roughly a third of WCAG
+  and cannot judge whether the words handed to a screen reader are the
+  words on screen, which is the whole question here. `scripts/style-audit.mjs`
+  (`npm run test:style`) runs beside it and measures the drawn wrapper —
+  contrast, hit targets, overflow, perceivable boundaries — inside
+  seventeen deliberately hostile host pages: sixteen clean, one a
+  documented known limit where the host's own body text is already below
+  the contrast line and the wrapper, which inherits the host's text
+  colour by design, cannot be more legible than the page it sits in. That
+  settles seventeen hosts and says nothing about the eighteenth. No test
+  page is published and no human-reviewed recording exists.
 - A sighted keyboard user keeps a visible focus indicator throughout
-  (WCAG 2.2 SC 2.4.7). **Not met**, deliberately, at the default
-  `visualHidden: true` for `mode: "text"`. `visualHidden: false` meets
-  it at the cost of an on-screen control.
+  (WCAG 2.2 SC 2.4.7). **Met at the default since 0.3.2**, where the
+  drawn `wrapper` puts real, `:focus-visible` buttons on screen.
+  **Still not met under `wrapper={false}`**, deliberately, where
+  `visualHidden` defaults to `true` and the control is clipped
+  off-screen; `visualHidden: false` meets it there at the cost of an
+  on-screen control. Meeting one success criterion is not conformance:
+  a protected block still fails SC 1.3.1, which is the mechanism.
 - The same guarantees available outside React. **Not started.**
 
 ---
+
+## 🟠 Decoy payloads: strengthen what 0.3.2 shipped
+
+**Shipped in 0.3.2, deliberately as a speed bump rather than a wall.** Every
+sealed block now carries four payloads — one holding the reader's words, three
+holding scrambled filler. The browser is told which is its own and grinds
+exactly one, so a reader waits no longer than before.
+
+**What it is for.** The cheapest attack on the accessibility path was never to
+visit the page. It was to fetch the HTML, regex out every `{n, t, iv, ct}` blob,
+and grind them natively — no browser, no button, one script that works on every
+site using this library. Four indistinguishable payloads make that four times
+the work, with nothing in a blob to say which one matters.
+
+**What it is not.** It does not stop anyone who reads the emitted script. The
+position of the real payload is derived from the block key by a rule that ships
+in the page, and with no server there is no fact we hold that an attacker
+cannot. This raises the cost of a lazy, generic attack. It does not raise the
+cost of a targeted one, and nothing in a static export can.
+
+**Known weaknesses, in the order they are worth fixing:**
+
+- **The real payload's position is discoverable.** Reading the script gives it
+  away. Any scheme that hides it from an attacker also hides it from the reader,
+  because both run the same code — so this is a limit of the no-server
+  constraint rather than an implementation gap.
+- **The filler corpus is a fixed, public asset.** Six public-domain works —
+  Austen, Shelley, Melville, Doyle, Wells, Kafka — spread across genre and era so
+  the filler does not all read as one voice. It was Austen alone, which made
+  identifying the source a single guess. Widening it does not close the hole:
+  anyone who solves a payload can run the public `decode()` over the result and
+  match it against those six books, which marks it as filler immediately. **So
+  the decoys raise a bulk attacker's cost and do not create ambiguity, and no
+  document here should claim otherwise.** Modern-register public-domain text is
+  scarce — Reddit is author-copyrighted and Wikipedia's CC BY-SA would drag
+  attribution obligations onto every page shipping a decoy — but US federal
+  government works are public domain and are the obvious way to widen this next.
+- **Which paragraphs get drawn is now random, and used to be derivable.** The
+  draw was seeded from the camouflage attribute and the block key, both of which
+  are printed in the page, using two public exports — so the decoys could be
+  recomputed straight from the markup with no CPU and the real payload found by
+  elimination. Demonstrated on eight blocks out of eight. It now uses Web Crypto
+  and there is nothing left to recompute.
+- **Four payloads is four times the ciphertext.** Measured over 25 renders, one
+  more protected block costs ~11 kB with the wrapper drawn and ~9 kB with
+  `wrapper={false}`, varying by a few kB with the padding bucket the drawn
+  decoys land in. The
+  count is a straight trade against page weight with no cliff either way, and
+  three decoys is a judgement, not a derived number.
+
+**Worth doing later, none of it blocking:**
+
+- **Move the payloads out of the HTML into a fetched file.** A large share of
+  naive scrapers never follow script tags, so a payload they never fetch is a
+  payload they never see — a bigger win than decoys, for the threat model this
+  project actually has. It needs a build step that emits the file, which is why
+  it did not ship: the component currently requires no build wiring at all, and
+  that property is worth more than this feature.
+- **One puzzle per page instead of per block.** Seal a page key behind a single
+  puzzle and derive each block's key from it. A reader on an eight-block article
+  currently solves eight puzzles; their device parallelises, so the wall-clock
+  cost is smaller than it sounds, but a four-core phone on an eight-block page
+  still waits about twice the advertised time. Changes the sealed format, so it
+  is the same surgery as the decoy work and should have been done alongside it.
+- **A decoy font.** Raised and not designed. Would need its own plan.
 
 ## 🔴 Threat model & honesty document
 

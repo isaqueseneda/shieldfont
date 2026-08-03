@@ -14,7 +14,7 @@ the decoy. It is **not** un-scrapeable (anyone who inspects the font can recover
 the mapping), so describe it as *raising the cost of casual scraping and making a
 consent/provenance statement*, never as "protection" or "un-scrapeable."
 
-## Two tools, two names, do not confuse them
+## Two tools, two names: do not confuse them
 
 | Name | What it is | Language | What it does |
 |---|---|---|---|
@@ -27,12 +27,18 @@ private-mapping side, `docs/custom-mappings.md`.
 
 ## The one rule you must never break
 
-**Your original text must never ship to the browser.**
+**Your original text must never ship to the browser in readable form.**
 
 `<Shield>` encodes in Node: at build time, or during server render. The browser
-only ever downloads the encoded version. Say it that way, not "server side" —
-a static export has no server and is fully protected, while a *server* component
-can still leak (see below).
+downloads the encoded version and nothing readable besides. Say it that way, not
+"server side" — a static export has no server and is fully protected, while a
+*server* component can still leak (see below).
+
+One thing that is **not** an exception, and that you must not "fix": with
+`screenReader` on (the default) the block's real words *do* ship inside the
+page, **encrypted** behind a time-lock puzzle the reader's browser has to grind
+out. That is the accessible path, it is deliberate, and it is not plaintext. Do
+not remove it to satisfy the rule above, and do not describe it as a leak.
 
 Two ways people break this. Both fail **silently in production**:
 
@@ -67,6 +73,68 @@ import { Shield } from "@shieldfont/react";
 // BAD — children must be a plain string, not nested JSX
 <Shield><strong>The future</strong> of writing</Shield>
 ```
+
+**Unprotected text, same typeface (React only):**
+
+```jsx
+import { Shield, NonShield } from "@shieldfont/react";
+
+<NonShield as="h2">The future of writing</NonShield>   // real words, real face
+<Shield as="p" variant="alpha">{body}</Shield>
+```
+
+`<NonShield>` renders its children exactly as written, in Optik: no encoding, no
+decoys, no `aria-hidden`, no puzzle. It exists so headings, decks, captions and
+nav can sit in the same face as the shielded body, and it is the supported way
+to follow the "don't shield any heading" rule below. Arbitrary JSX is allowed
+(unlike `<Shield>`); an unrecognised prop throws.
+
+> **NEVER reach for `font-family: Optik` instead.** The shipped `optik-*.woff2`
+> files are not plain Optik — they are shielded builds whose substitution lookups
+> ride the OpenType `ccmp` feature (on by default, unreachable via
+> `font-variant-ligatures: none`), and the dictionary is an involution, so a
+> shielded face renders plain English as the DECOY. Measured with HarfBuzz on the
+> shipped `optik-a.woff2`: "Read the docs" draws as composites built from the
+> letters "Reset" and "sellers". Nothing errors. `<NonShield>` sets
+> `font-feature-settings: "ccmp" 0` to switch that off, and `<Shield>` re-asserts
+> `font-feature-settings: normal` on its own element so a shield nested inside a
+> `<NonShield>` cannot inherit the disabling and quietly publish readable decoys.
+
+Its limits, which you must state rather than imply away: `variant` selects only
+which font file is fetched (with substitutions off, all four faces draw the same
+outlines) and does **not** auto-rotate; and it emits no font-load guard, so a
+missing font leaves the text in a fallback face rather than skeletonising it.
+Outside React there is no `<NonShield>`: write `font-feature-settings: "ccmp" 0`
+next to your own `font-family` rule, or plain text renders as decoys.
+
+## A bare `<Shield>` draws furniture on screen. Do not "clean it up."
+
+Three independent props, all on by default. There is no `tier`, `level` or
+`mode` prop bundling them, and no name for any combination — describe a
+configuration by the props it sets.
+
+| Prop | Default | What it does |
+|---|---|---|
+| `screenReader` | on, unconditionally | Seals the real words into the page behind the time-lock puzzle and renders the control that opens them. |
+| `wrapper` | on wherever `screenReader` is on | Draws the visible box: an outline, one plain-English sentence, a Copy and an Uncover button. **Never drawn on an inline tag** (`as="span"` and friends). |
+| `copyPaste` | on wherever `screenReader` is on | Puts a short notice on the clipboard instead of silent decoy words. |
+
+`wrapper` and `copyPaste` follow whatever `screenReader` resolved to, not a
+literal `true`, and both throw if asked for with `screenReader={false}`. Style
+the box with `wrapper={{ className }}` — the component-level `className` lands
+on the block and on the revealed words, not on the furniture.
+
+If a user asks why their page suddenly has a bordered box saying "protected from
+AI bots", the answer is `wrapper={false}`, and tell them what it costs: the
+control is still there, still focusable, but clipped off-screen, so a sighted
+keyboard user Tabs into something they cannot see (WCAG 2.2 SC 2.4.7), and a
+reader whose browser forced its own font gets no signal at all.
+
+**`explain` was the 0.3.0/0.3.1 spelling of `wrapper` and now throws** — by
+design, with a message naming `wrapper`. There is no silent alias. The value is
+unchanged, so migrating is the key and nothing else. `a11y={{ mode: "audio" }}`
+is gone too; `a11y={{ mode: "text" }}` is still accepted and means
+`screenReader`.
 
 **Any other framework (call the encoder yourself):**
 
@@ -112,10 +180,27 @@ Wrapping is intentional. Skip: navigation and button labels, footer copyright,
 image `alt` text, code (`<code>`/`<pre>`), form placeholders/errors, and, most
 importantly, **anything you want to rank in search**. Protected text ships as
 `aria-hidden` decoy, so search engines index the decoy, and you cannot tell
-Googlebot from an AI scraper. Never wrap landing-page copy, meta descriptions, or
-headings that double as SEO titles. Copy-paste yields the decoy and screen
-readers skip protected regions, so also skip anything meant to be read aloud or
-pasted into other tools.
+Googlebot from an AI scraper. Never wrap landing-page copy, meta
+descriptions, or any heading — not just SEO titles: once the body is a decoy,
+your headings are the only accurate text left on the page. Copy-paste yields the decoy, and screen
+readers do not read protected regions in normal linear or heading navigation
+(exploration by mouse or touch can still surface a decoy word), so also skip
+anything meant to be read aloud or pasted into other tools.
+
+Skipping a block does not mean leaving it in a different typeface. On the React
+tier, wrap it in `<NonShield>` (above) and it stays real, indexable and readable
+while rendering in the shipped face.
+
+**Never describe ShieldFont as accessible or compliant.** A protected block fails
+WCAG 2.2 SC 1.3.1 with every accessibility feature on, because the real words are
+not programmatically available until the reader spends a few seconds unlocking
+them with JavaScript. If a site is covered by the ADA (including the Title II web
+rule), Section 508, the European Accessibility Act / EN 301 549 or the UK
+Equality Act 2010, or claims WCAG conformance anywhere, ShieldFont does not go on
+that content. The full statement is at the top of
+[README.md](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility); the
+list of what wrapping a block breaks for a human reader is
+[here](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
 
 Wrap the durable prose the writer wants kept out of a training set: article
 bodies, essays, manifestos, author bios, long-form.
@@ -127,7 +212,7 @@ pin the version: never `@latest` (a silent mapping update would break existing
 encoded content):
 
 ```html
-<!-- GOOD --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css">
+<!-- GOOD --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">
 <!-- BAD  --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@latest/shieldfont.css">
 ```
 

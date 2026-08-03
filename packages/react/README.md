@@ -4,6 +4,9 @@ A React **server component** for [ShieldFont](https://github.com/isaqueseneda/sh
 
 **Encoded text is what reaches the browser.** Scrapers reading the HTML source see the encoded form. Humans, rendering through the font, see the original.
 
+> [!CAUTION]
+> **ShieldFont harms accessibility, on purpose, and no setting turns that off.** It withholds the real text of a protected block from the page source, so a protected block **fails WCAG 2.2 SC 1.3.1** even with every accessibility feature on: the words are not programmatically available until a reader completes a few-second unlock that needs JavaScript. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site — or you claim WCAG conformance anywhere on it — don't use this on content that claim covers. It is for an author's own essays, fiction and blog posts, by their own informed choice; not for government, procurement-bound or service-critical content. Details: [Accessibility](#accessibility-read-this).
+
 > [!WARNING]
 > **Wrapping content in `<Shield>` removes it from search-engine indexing.** The DOM text is `aria-hidden` decoy gibberish, and you **cannot** distinguish Googlebot from an AI scraper, so search engines index the decoy, not your words. **Do not wrap anything you want to rank.** This is the single biggest thing to understand before you ship; see [Accessibility](#accessibility-read-this) and [Where the encoding must run](#where-the-encoding-must-run-important).
 
@@ -14,7 +17,7 @@ npm install @shieldfont/react
 ## Quick start (Next.js App Router, Astro, Remix: any RSC framework)
 
 ```jsx
-import { Shield } from "@shieldfont/react";
+import { Shield, NonShield } from "@shieldfont/react";
 
 export default function Page() {
   return (
@@ -25,7 +28,9 @@ export default function Page() {
         The future of writing belongs to those who protect their words.
       </Shield>
 
-      <Shield as="h2" size="2.4rem">Manifesto</Shield>
+      {/* Headings are never shielded. <NonShield> renders them unprotected,
+          in the same typeface as the block above. */}
+      <NonShield as="h2" size="2.4rem">Manifesto</NonShield>
     </main>
   );
 }
@@ -94,7 +99,10 @@ Note: α/β/γ have slightly different pair counts (11,970 / 12,034 / 12,036), s
 | `className` | `string` | n/a | Merges with the internal scope. |
 | `style` | `CSSProperties` | n/a | Merges with the internal font-family scope. |
 | `rotate` | `boolean \| RotateConfig` | `false` | Mix a **time period** into the variant choice. See [Time-based rotation](#time-based-rotation-optional). |
-| `a11y` | `ShieldA11y` | *(none — warns in dev)* | The accessible alternative rendered outside the hidden region. See [Accessibility](#accessibility-read-this). |
+| `screenReader` | `boolean \| { seconds? }` | **`true`**, unconditionally | Seals the block's real words into the page behind the time-lock puzzle and renders the control that opens them. The other two switches stand on this one. See [Accessibility](#accessibility-read-this). |
+| `wrapper` | `boolean \| ShieldNotice` | **on wherever `screenReader` is on** | Draws the visible box: an outline, one plain-English sentence, a Copy and an Uncover button. **Never drawn on an inline tag** (`as="span"` and friends) — asking for it there throws. `wrapper={{ className }}` styles the box and its strips; the component-level `className` does not reach them. Called `explain` in 0.3.0/0.3.1; **passing `explain` throws**. |
+| `copyPaste` | `boolean \| { notice? }` | **on wherever `screenReader` is on** | Puts a short notice on the clipboard instead of silent decoy words. Independent of `wrapper`. |
+| `a11y` | `ShieldA11y` | *(the `screenReader` default)* | The older spelling: `a11y={{ mode: "text" }}` means `screenReader`, `a11y={{ mode: "none" }}` means `screenReader={false}`. Still accepted, and the place the `seconds`, `reveal`, `label`, `note` and `visualHidden` options live. See [Accessibility](#accessibility-read-this). |
 | `children` | `string` | required | A plain string. **Anything else throws** — see [What gets encoded](#what-gets-encoded-inside-shield). |
 
 Precedence when several of these could pick the variant, highest first: an explicit **`variant`** prop (always pins) → the **`rotate`** prop → module-level **`setRotation()`** → the content hash.
@@ -171,9 +179,9 @@ Only the faces a page actually uses are downloaded; declaring six faces per vari
   <MyWidget />
 </Shield>
 
-// ✅ One <Shield> per text block.
+// ✅ One <Shield> per text block, and the heading left unprotected.
 <article>
-  <Shield as="h2">Chapter One</Shield>
+  <NonShield as="h2">Chapter One</NonShield>
   <Shield as="p">Text without inline markup is encoded.</Shield>
   <MyWidget />
 </article>
@@ -184,6 +192,105 @@ our wrapper out of the table and the cell disappears from the accessibility
 tree, so `<Shield>` throws rather than let that happen silently. Put a plain
 `<td>` in your markup and shield its contents:
 `<td><Shield as="span">…</Shield></td>`.
+
+## `<NonShield>`: the same typeface, none of the protection
+
+`<NonShield>` renders its children **exactly as written**, in Optik. No
+encoding, no decoys, no `aria-hidden`, no sealed payload, no puzzle, no copy
+guard, no notice strip. The words in the DOM are the words on screen: a screen
+reader reads them, a search engine indexes them, a translator translates them,
+copy-paste copies them, find-in-page finds them.
+
+```jsx
+import { Shield, NonShield } from "@shieldfont/react";
+
+<article>
+  <NonShield as="h2">The future of writing</NonShield>
+  <Shield as="p" variant="alpha">{body}</Shield>
+  <NonShield as="p" size="0.9rem">Photograph by <em>Jane Roe</em></NonShield>
+</article>
+```
+
+It is there so a ShieldFont page can be **one typeface throughout**. Until it
+existed, the shielded paragraphs rendered in Optik and everything around them —
+headings, decks, captions, nav — rendered in whatever fallback the host
+stylesheet supplied, and the author's only fix was to hand-roll a `@font-face`
+and a `font-family` rule of their own. It is also the supported way to follow
+this project's own rule that
+[headings must never be shielded](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#headings-dont-shield-them):
+once the body is a decoy, the headings are the only accurate text left on the
+page, so `<NonShield as="h2">` keeps them real *and* in the right face.
+
+### The bit that matters: `font-family: Optik` alone renders the decoy
+
+> [!WARNING]
+> **The bundled `optik-*.woff2` files are not the Optik typeface — they are
+> *shielded builds* of it.** Setting `font-family: Optik` on ordinary text
+> renders the **decoy**, and nothing errors when it does.
+
+The word substitutions are GSUB lookups wired into the OpenType **`ccmp`**
+feature, which is on by default and which `font-variant-ligatures: none` does
+not reach. The dictionary is an **involution** (`m[m[x]] === x` — the reason
+`decode` in `@shieldfont/core` is defined as `encode`), so every word in it is
+both an original and a decoy and the font swaps it either way. Shaping through
+the shipped `optik-a.woff2` with HarfBuzz: `"Read the docs"` draws as composites
+built from the letters `"Reset"` and `"sellers"`; `"2026 report"` draws as
+`"2527 report"`. 11,962 of the 11,970 `alpha` words behave that way.
+
+`<NonShield>` sets **`font-feature-settings: "ccmp" 0`** on the element it
+renders. With the feature off, all 11,970 dictionary words shape to their own
+letters, the base font's real `fi`/`fl` ligatures survive, and accented text is
+untouched in NFC and NFD alike.
+
+Because `font-feature-settings` **inherits**, `<Shield>` declares
+`font-feature-settings: normal` on its own element, so a `<Shield>` nested
+inside a `<NonShield>` cannot inherit `"ccmp" 0`, silently stop substituting,
+and publish its decoy text at full readability.
+
+### Props
+
+| Prop | Type | Default | Purpose |
+|---|---|---|---|
+| `as` | `ElementType` | `"div"` | Which element to render. No table-tag restriction — `<NonShield>` renders one element and no wrapper, so `as="td"` is a `<td>` and behaves like one. |
+| `variant` | `"alpha" \| "beta" \| "gamma" \| "maxhide"` | `"alpha"` | **Only which file the browser fetches.** With substitutions off all four faces draw identical outlines, so this is a bandwidth choice, not a protection one. |
+| `weight` | cut name or `1..1000` | inherit | The same six real cuts, the same nearest-cut snapping, the same `font-synthesis: none`. |
+| `lineHeight` | `number \| string` | inherit | Passthrough. |
+| `size` | `string` | inherit | font-size passthrough. |
+| `className` | `string` | n/a | Escape hatch. |
+| `style` | `CSSProperties` | n/a | Merges **over** the internal scope, so it can override `fontFeatureSettings` — which turns the substitutions back on for text that was never encoded. Documented, unguarded. |
+| `children` | `ReactNode` | | Rendered verbatim. |
+
+Any other prop **throws**, same as on `<Shield>`.
+
+**Arbitrary JSX is allowed here and is not on `<Shield>`.** `<Shield>` rejects
+anything but a plain string because the encoder cannot see inside a component,
+so nested content would ship unencoded inside a block that still looks
+protected. Nothing about that applies here: nothing is encoded, hidden or
+sealed, so there is no protected form for nested content to fall out of.
+`font-family` and `font-feature-settings` both inherit, so a nested `<a>` or
+`<em>` picks up the typeface and the substitution-off rule untouched.
+
+### What it deliberately does not do
+
+- **It does not rotate `variant`.** `<Shield>` spreads blocks across
+  `alpha`/`beta`/`gamma` because the mapping changes what a scraper reads; here
+  nothing is encoded, so rotating would pull a second ~825 KB file onto the page
+  to draw the same outlines. Pin `<Shield>` to the variant your `<NonShield>`s
+  use and the page downloads one font.
+- **It emits no font-load guard and is not covered by `<Shield>`'s.** It does
+  not stamp `data-typeface`, which is what the guard's selectors match. A
+  missing font therefore leaves `<NonShield>` rendering **the correct words in a
+  fallback face** — degraded design, intact content — instead of blanking them
+  behind the "Content unavailable" skeleton. Its weights are not seeded into the
+  guard either, so a missing `optik-a-800.woff2` used only by a heading cannot
+  skeletonise every genuinely shielded block on the page.
+- **It shares assets rather than duplicating them.** A page mixing the two
+  components emits one `@font-face` stylesheet per family whichever renders
+  first, and a `<NonShield>` rendering first does not stop a later `<Shield>`
+  emitting the guard it still needs.
+- **It is safe inside `"use client"`.** There is no plaintext to leak and no
+  dictionary in play, so it emits none of `<Shield>`'s client-render warning —
+  which is what lets you put a heading in Optik inside an interactive island.
 
 ## Time-based rotation (optional)
 
@@ -323,59 +430,64 @@ There's no CLI for this step: pick any short string for the hash and script the 
 > [!WARNING]
 > **SEO:** the same property that hides text from scrapers hides it from **search engines**. Protected text is `aria-hidden` gibberish in the DOM, and you can't tell Googlebot apart from an AI scraper, so anything inside `<Shield>` is indexed as decoy, not as your real words. **Don't wrap content you want to rank** (page titles, headings, marketing copy). Wrap only what you're deliberately withholding from machines.
 
+> [!WARNING]
+> **A protected block fails WCAG 2.2 SC 1.3.1, with every accessibility feature turned on, and that will not be patched out.** ShieldFont deliberately withholds the real text of a protected block from the page source: the words are not programmatically available until a reader completes an unlock taking **a few seconds** and requiring JavaScript, a modern browser and an https origin. An audit will flag every block you wrap. If the **ADA** (including the Title II web rule for US state and local government), **Section 508**, the **European Accessibility Act / EN 301 549** or the **UK Equality Act 2010** applies to your site, or you claim WCAG conformance anywhere on it, don't put `<Shield>` on content that claim covers. The accessible features below make a protected page **humane**, not compliant, and we will never describe them otherwise. Full statement, including where ShieldFont *is* a reasonable choice: [the accessibility warning](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility).
+
 Protected regions are `aria-hidden="true"`: the DOM text is encoded gibberish, so screen readers, `Ctrl/⌘-F`, copy-paste, and translation tools operate on the gibberish, not the visible words. **This is inherent to the approach** (a font that hides text from machines hides it from assistive tech too), and `aria-hidden` is not configurable — it is set unconditionally and there is no prop to turn it off.
 
-That is the right call and it is still not enough. Un-hiding would make a screen reader voice the decoy: fluent, grammatical, wrong, with nothing to signal that anything is off — worse than silence, because it doesn't announce itself as broken. But silence isn't a fix either. Either way, what a sighted reader perceives is not programmatically determinable, which fails **WCAG 2.2 SC 1.3.1**. Under the EU Accessibility Act or the ADA Title II web rule, treat an accessible alternative as a shipping requirement.
+That is the right call and it is still not enough. Un-hiding would make a screen reader voice the decoy: fluent, grammatical, wrong, with nothing to signal that anything is off — worse than silence, because it doesn't announce itself as broken. But silence isn't a fix either. Either way, what a sighted reader perceives is not programmatically determinable, which fails **WCAG 2.2 SC 1.3.1**.
+
+Two things that claim is often stretched into, and neither is true:
+
+- **`aria-hidden` does not put the decoy out of reach.** It governs linear and heading navigation, which is where the silence comes from. NVDA's mouse-tracking and screen-review modes, and touch exploration on iOS and Android, walk the DOM by screen position, so a reader using one of those can still land on a decoy word and hear it. Reported in [#2](https://github.com/isaqueseneda/shieldfont/issues/2).
+- **A reader who forces their own font gets no protection from any of this and no warning either.** With Firefox's *"Allow pages to choose their own fonts"* off, a dyslexia-friendly font extension, or some high-contrast setups, the decoy renders in the forced font. The font loaded, so the font-load guard never fires, and `getComputedStyle` still reports the family you asked for, so nothing in the page can detect it. They read fluent, wrong English silently. The **visible wrapper** is the only mitigation that reaches them: [forced fonts](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#forced-fonts-the-one-with-no-signal).
+
+The whole list of what wrapping a block costs a human reader is [what protecting a block breaks](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
 
 So the fix is not to un-hide, it's to put a real alternative *next to* the block. The **`a11y` prop** renders one outside the hidden region and before it in DOM order, so a screen-reader user reaches it before the silence:
 
 ```jsx
 <Shield a11y={{ mode: "text" }}>{body}</Shield>                   {/* the real words, time-locked */}
-<Shield a11y={{ mode: "text", seconds: 20 }}>{body}</Shield>       {/* 20 is the default; 5..120 */}
+<Shield a11y={{ mode: "text", seconds: 14 }}>{body}</Shield>       {/* 14 is the default; 1..30 */}
 <Shield a11y={{ mode: "text", reveal: "visible" }}>{body}</Shield> {/* replace the block on screen */}
-<Shield a11y={{ mode: "audio", src: "/audio/post-1.mp3" }}>{body}</Shield>
 <Shield a11y={{ mode: "none" }}>{body}</Shield>   {/* explicit, auditable opt-out */}
 ```
 
-- `"text"` ships the block's **real words, encrypted into the page**, with a button that grinds out the key in the reader's own browser (a 20-second budget by default, once per block, cached until you next deploy; 7.6 s measured in Chrome on a desktop). Nothing to generate, nothing to host, no server. **[Full reference: `docs/plain-text-mode.md`](../../docs/plain-text-mode.md)** — read it before changing `seconds`.
-- `"audio"` renders a native `<audio controls preload="none">` plus a real explanatory sentence (zero JavaScript, keyboard-operable, survives a static export). `note` replaces that sentence in either mode.
-- `"none"` renders nothing and stays silent. **Omitting `a11y` entirely logs one development-time warning per process** — a warning, not an error, so upgrading breaks nothing.
+- `"text"` ships the block's **real words, encrypted into the page**, with a button that grinds out the key in the reader's own browser (a 14-second budget by default, once per block, cached until you next deploy; about 2.5 s measured in Chrome on a desktop). Nothing to generate, nothing to host, no server. **[Full reference: `docs/plain-text-mode.md`](../../docs/plain-text-mode.md)** — read it before changing `seconds`.
+- `"none"` renders nothing. **Omitting `a11y` entirely is silent and gets the `"text"` default; what logs one development-time warning per process is turning the alternative off** — `{ mode: "none" }` or `screenReader={false}` — because that is the configuration where assistive technology gets nothing at all. A warning, not an error, so upgrading breaks nothing.
 
 ### `ShieldA11y` options
 
-| Option | Modes | Type | Default | What it does |
-|---|---|---|---|---|
-| `seconds` | `text` | `number` | `20` | Grind budget on a deliberately slow reference device. Range **5..120**; `sealText` throws outside it. Read the warning below before raising it. |
-| `reveal` | `text` | `"hidden" \| "visible"` | `"hidden"` | Where the unlocked words go. `"hidden"` puts them in the accessibility tree clipped off-screen and leaves the encoded block on screen untouched — a sighted reader sees nothing happen, because they can already read it. `"visible"` replaces the encoded block on screen: a layout shift, in exchange for selection, copy-paste and browser translation of the real text for everyone. |
-| `label` | `text` | `string` | *auto* | Overrides the button's accessible name. The default names the element type and the block's position — *"Unlock the plain text for paragraph 2 (up to 20 seconds)"* — which is what stops several blocks on one page sounding identical. **Never put the protected words in it:** the label ships in the HTML. |
-| `note` | `text`, `audio` | `string` | *auto* | Overrides the explanatory sentence. In text mode the default long sentence is spoken **once per page**; later blocks get a short form, because hearing the same explanation before every paragraph is an obstacle, not thoroughness. |
-| `visualHidden` | `text`, `audio` | `boolean` | **`true`** for `text`, `false` for `audio` | Clips the control with **clip-path**, never `display:none` (which would remove it from the accessibility tree too — the exact bug this prop exists to fix). Text mode is screen-reader-only by default; audio keeps its player on screen, since a player nobody can see is a player nobody can press. See the focus warning below. |
+All five apply to `mode: "text"`, which is the only mode that renders anything.
 
-What the reader actually gets, in the default configuration: a note, then a button whose name is unique to that block; a `<progress>` element that assistive tech can query but that does not chatter; a polite status line that says nothing at all while it is empty; and, when the work finishes, the words themselves — announced automatically on arrival, and a real Tab stop, so they can be re-read as often as the reader wants. The wrapper is `role="presentation"` and carries **no group role**: with one, VoiceOver read out roughly twenty words of "you are currently on a button inside of a group" scaffolding in front of every block.
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `seconds` | `number` | `14` | Grind budget on the reference device — 120,000 squarings/second, an honest median (a mid-range phone, or Safari, which trails V8), not a fast desktop. Range **1..30**; `sealText` throws outside it. Read the warning below before raising it. |
+| `reveal` | `"hidden" \| "visible"` | `"hidden"` | Where the unlocked words go. `"hidden"` puts them in the accessibility tree clipped off-screen and leaves the encoded block on screen untouched — a sighted reader sees nothing happen, because they can already read it. `"visible"` replaces the encoded block on screen: a layout shift, in exchange for selection, copy-paste and browser translation of the real text for everyone. |
+| `label` | `string` | *auto* | Overrides the button's accessible name. The default is *"Uncover the original text (up to 14 seconds)"* — no paragraph ordinal, because one press uncovers every protected block on the page, and naming one paragraph would describe a scope the button does not have. **Never put the protected words in it:** the label ships in the HTML. |
+| `note` | `string` | *auto* | Overrides the explanatory sentence. The default long sentence is spoken **once per page**; later blocks get a short form, because hearing the same explanation before every paragraph is an obstacle, not thoroughness. |
+| `visualHidden` | `boolean` | **`true`** | Clips the control with **clip-path**, never `display:none` (which would remove it from the accessibility tree too — the exact bug this prop exists to fix). **Only applies where `wrapper` is off**, because the drawn wrapper replaces the clipped control outright; passing it together with a drawn wrapper throws rather than being quietly ignored. See the focus warning below. |
+
+What the reader actually gets, in the default configuration: a note, then a button that says what it does and how long it may take; a `<progress>` element that assistive tech can query but that does not chatter; a polite status line that says nothing at all while it is empty; and, when the work finishes, the words themselves — announced automatically on arrival, and a real Tab stop, so they can be re-read as often as the reader wants. The wrapper is `role="presentation"` and carries **no group role**: with one, VoiceOver read out roughly twenty words of "you are currently on a button inside of a group" scaffolding in front of every block.
 
 > [!NOTE]
-> **`mode: "text"` renders no link.** The `0.2.0` shape was `{ mode: "text", href }`, pointing at a plain-text copy on its own URL; that and the audio mode's `transcript` link were both removed, because a URL cannot be offered to a screen reader without being offered to everyone else and the same crawl that reads the decoy reads the link sitting beside it. The mode that replaced it inverts that trade: the words are in the page but **closed**, and the key is the answer to a time-lock puzzle — T sequential squarings that cannot be parallelised, so a crawler with a thousand GPUs still pays them one at a time, per block. Sealing costs 62 ms per block; opening costs the reader their 20-second budget. Nobody is denied the text; the accessible path simply stops being the *cheapest* path in.
+> **`mode: "text"` renders no link.** The `0.2.0` shape was `{ mode: "text", href }`, pointing at a plain-text copy on its own URL; it was removed, along with every other link this layer ever offered, because a URL cannot be offered to a screen reader without being offered to everyone else and the same crawl that reads the decoy reads the link sitting beside it. The mode that replaced it inverts that trade: the words are in the page but **closed**, and the key is the answer to a time-lock puzzle — T sequential squarings that cannot be parallelised, so a crawler with a thousand GPUs still pays them one at a time, per block. Sealing costs about 64 ms per payload, and a block is four of them — one real, three decoys — so about 261 ms per block; opening costs the reader their 14-second budget, and they grind exactly one payload. Nobody is denied the text; the accessible path simply stops being the *cheapest* path in.
 
 > [!WARNING]
-> **The control is invisible by default, and a sighted keyboard user pays for it.** With `visualHidden` defaulting to `true` for `mode: "text"`, someone navigating by keyboard **without** a screen reader Tabs into a control they cannot see and their focus indicator vanishes — a **WCAG 2.2 SC 2.4.7** failure. This is deliberate: a sighted reader can already read the block, so an on-screen widget offering to unlock it is unexplained noise. The usual remedy (clipped until focused, visible while focused) is not applied, because the control was asked to be invisible. Pass `visualHidden: false` to take the other trade.
+> **Under `wrapper={false}` the control is invisible, and a sighted keyboard user pays for it.** The drawn wrapper is the default and its Copy and Uncover buttons are real, on screen and `:focus-visible`. Turn it off and `visualHidden` takes over at its `true` default: someone navigating by keyboard **without** a screen reader Tabs into a control they cannot see and their focus indicator vanishes — a **WCAG 2.2 SC 2.4.7** failure. That is deliberate, and it was the shipped default in 0.3.0 and 0.3.1; the reasoning was that a sighted reader can already read the block, so an on-screen widget offering to unlock it is unexplained noise. The usual remedy (clipped until focused, visible while focused) is not applied, because the control was asked to be invisible. Leave `wrapper` at its default, or pass `visualHidden: false`, to take the other trade.
 
 > [!WARNING]
-> **Difficulty has a ceiling, and `seconds: 20` is near it.** A crawler that wants your words can render the page and OCR the pixels for roughly three seconds of server CPU whether or not this feature exists — that is the floor on ShieldFont's protection, and no cryptography raises it. The goal is therefore *not cheaper than OCR*, not "expensive". Past that point, extra difficulty buys **nothing** (a crawler just takes the cheaper door) and is paid for entirely by disabled readers waiting longer. `sealText` refuses anything above 120 or below 5. If you are tempted to raise it to "harden" a page, that is the mistake this paragraph exists to stop.
-
-> [!IMPORTANT]
-> **Synthesise audio at build time**, where your plaintext already lives — free offline options exist (`piper` on CI, `say` on macOS). Do **not** reach for browser `speechSynthesis`: on the rendered page it would voice the decoy, and on the original it would require shipping your plaintext to the browser, which is the leak this package exists to prevent.
+> **Difficulty has a ceiling, and `seconds: 14` is at it.** A crawler that wants your words can render the page and OCR the pixels for roughly five seconds of server CPU per page whether or not this feature exists — that is the floor on ShieldFont's protection, and no cryptography raises it. The goal is therefore *not cheaper than OCR*, not "expensive". Past that point, extra difficulty buys **nothing** (a crawler just takes the cheaper door) and is paid for entirely by disabled readers waiting longer. `sealText` refuses anything above 30 or below 1. If you are tempted to raise it to "harden" a page, that is the mistake this paragraph exists to stop.
 
 **What this does not fix, and we won't pretend otherwise:**
 
 - **OCR is still cheaper** for a crawler that wants your words. `mode: "text"` stops the accessible path being a *shortcut*; it does not stop scraping and it is not a wall.
 - **A reader who needs `mode: "text"` waits.** Everyone else has the words instantly. That is unequal access however carefully it is engineered — a compromise, not a solution.
 - **`mode: "text"` needs JavaScript**, plus `BigInt` and `crypto.subtle`, and a secure (https) origin. Everything else in ShieldFont works with JS off; this does not. `crypto.subtle` is also missing on insecure origins, so plain `http://` breaks it (the control says so rather than blaming the browser).
-- **A sighted keyboard user loses their focus indicator** on the invisible control (WCAG 2.2 SC 2.4.7, above). `visualHidden: false` is the opt-out; there is no fix that keeps both properties yet.
+- **A sighted keyboard user loses their focus indicator under `wrapper={false}`** (WCAG 2.2 SC 2.4.7, above), where the control is clipped off-screen. The default draws it; `visualHidden: false` is the other opt-out. None of that makes a protected block conformant — it still fails SC 1.3.1, and that is the mechanism.
 - **Once revealed, the plaintext is in the DOM.** A crawler that runs a real browser, presses the button and waits gets the words — having paid for them, which is the deal.
-- **`mode: "audio"` alone still fails WCAG 2.2 SC 1.2.1 — Level A.** Audio-only content with no text alternative fails that criterion, and the text mode does **not** rescue it: they are separate alternatives you choose between, not a pair. If you ship audio only, you still have no answer to 1.2.1.
-- An audio track is also still not a document: not navigable by heading, not searchable, not quotable, not skimmable.
 
-**Where the testing stands, exactly.** The text mode is exercised under `@guidepup/virtual-screen-reader` in Playwright and has been driven by hand with **real VoiceOver on macOS** — which is what found the group chatter, the announcements that cut each other off and the revealed text that could not be re-read, all since fixed. **NVDA and JAWS remain unverified.** There is no axe scan and no published test page.
+**Where the testing stands, exactly.** The text mode is exercised under `@guidepup/virtual-screen-reader` in Playwright, driven against **real NVDA on a Windows runner in CI on every commit**, and driven by hand with **real VoiceOver on macOS** — which is what found the group chatter, the announcements that cut each other off and the revealed text that could not be re-read, all since fixed. **JAWS remains unverified.** An axe-core scan, before and after the unlock, reports zero violations across WCAG 2.0/2.1/2.2 A and AA. **That is not a pass and not conformance:** axe covers roughly a third of WCAG and cannot judge whether the words handed to a screen reader are the words on the screen, which is the whole question here. Beside it, `npm run test:style` measures the drawn wrapper — contrast, hit targets, overflow, perceivable boundaries — inside seventeen deliberately hostile host pages (Tailwind Preflight, `button { all: unset }`, forced-colors, 10px and 24px roots, RTL, four light/dark combinations); sixteen come back clean and one is a documented known limit, where the host's own body text is already below the contrast line and the wrapper, which inherits the host's text colour on purpose, cannot be more legible than the page it sits in. That settles seventeen hosts and says nothing about the eighteenth. There is no published test page.
 
 Better ideas here are the most useful contribution anyone can make to this project. Meanwhile: don't wrap navigation, form labels, or essential interactive text.
 
@@ -397,7 +509,8 @@ inferring it from `VERSION`.
 ## License
 
 AGPL-3.0-or-later. The bundled default fonts use **Optik, © Playtype, used
-under the ShieldFont–Playtype partnership**, for ShieldFont's replaced-glyph
-form only. They are **not** under OFL. The SIL Open Font License 1.1 applies only to
+with Playtype's permission** — whether or not the word substitutions are
+active (which is what allows `<NonShield>`), provided the use stays within
+the ShieldFont packages and tooling. They are **not** under OFL. The SIL Open Font License 1.1 applies only to
 fonts you build yourself from the OFL base fonts (Inter, Syne Mono, Young Serif).
 See [NOTICE](./NOTICE).

@@ -4,6 +4,9 @@ The shared encoding/decoding logic for [ShieldFont](https://github.com/isaquesen
 
 Zero runtime dependencies. Used by `@shieldfont/react` and any framework adapter you care to build.
 
+> [!CAUTION]
+> **ShieldFont harms accessibility, on purpose, and no setting turns that off.** It withholds the real text of a protected block from the page source, so a protected block **fails WCAG 2.2 SC 1.3.1**: the words are not programmatically available to assistive technology at all, and this package ships **none** of the accessible-alternative machinery that `@shieldfont/react` has — encode with it and the alternative is yours to build, or the content stays unwrapped. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site — or you claim WCAG conformance anywhere on it — don't encode content that claim covers. This is for an author's own essays, fiction and blog posts, by their own informed choice; not for government, procurement-bound or service-critical content. Full statement: [the accessibility warning](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility). What else it breaks for a human reader — copy-paste, find-in-page, translation, Reader Mode, forced fonts, feeds: [what protecting a block breaks](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
+
 ## Install
 
 ```bash

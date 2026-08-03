@@ -24,16 +24,39 @@ All four tiers build on the same v18 dictionary family, and `alpha` is the defau
 
 Protected text ships as `aria-hidden` decoy words in the DOM. Read this before you decide *what* to wrap:
 
-- **SEO: the big one.** Search engines index the *decoy* text, not your real words. You **cannot** distinguish Googlebot from an AI scraper, the same bytes go to both, so **don't wrap content you want to rank** (landing pages, product copy, meta descriptions, headings that double as SEO titles). Wrap the durable prose you'd rather keep out of a training set: essays, manifestos, long-form.
-- **Copy-paste** yields the encoded form, not the original.
-- **Screen readers** skip protected regions: they're removed from the accessibility tree. `<Shield>` sets `aria-hidden="true"` unconditionally and **there is no prop to turn it off**, because voicing a decoy is worse than voicing nothing. Nobody hears gibberish. What ships alongside it is the **`a11y` prop**, which renders a real alternative as a sibling *outside* the hidden region and *before* it in DOM order: `{ mode: "text" }` ships the block's real words **encrypted into the page**, with a button that grinds the key out in the reader's own browser (a 20-second budget per block by default, 7.6 s measured in Chrome, nothing for you to generate or host); `{ mode: "audio", src }` points at a build-time recording you produce; `{ mode: "none" }` is an explicit opt-out. The text control is **screen-reader-only by default** — nothing appears on screen, the unlocked words go to assistive technology clipped off-screen, and the encoded block is left as it is (`reveal: "visible"` swaps that for an on-screen replacement, `visualHidden: false` for an on-screen control). **No mode renders a link** — a public plain-text URL sitting in the HTML is a free, one-line bypass for any scraper that follows it, which is why the `0.2.0` `{ mode: "text", href }` was removed and why its replacement makes retrieval cost sequential compute instead of a fetch. Difficulty is capped by the cost of OCR rather than by paranoia, so raising `seconds` buys nothing. Two costs to weigh before you switch it on: `mode: "text"` needs JavaScript plus `BigInt`, `crypto.subtle` and an https origin, and an invisible control means a sighted keyboard user with no screen reader Tabs into something they cannot see and loses their focus indicator (**WCAG 2.2 SC 2.4.7**). Verified by hand with real VoiceOver on macOS; **NVDA and JAWS are not.** [`docs/plain-text-mode.md`](./plain-text-mode.md) has the numbers and the full limits. **React only:** if you use the CDN stylesheet or `@shieldfont/core` directly, set `aria-hidden` and supply the alternative yourself.
+- **Accessibility: read the warning first.** A protected block fails **WCAG 2.2 SC 1.3.1** with every accessibility feature turned on, because the real words are not programmatically available until a reader spends a few seconds unlocking them with JavaScript. If accessibility law applies to your site — ADA (including the Title II web rule for US state and local government), Section 508, the European Accessibility Act / EN 301 549, the UK Equality Act 2010 — or you claim WCAG conformance anywhere, don't wrap content covered by that claim. The full statement, and where ShieldFont *is* a reasonable choice, is at the top of the [README](../README.md#-read-this-first-shieldfont-breaks-accessibility).
+- **SEO: the big one.** Search engines index the *decoy* text, not your real words. You **cannot** distinguish Googlebot from an AI scraper, the same bytes go to both, so **don't wrap content you want to rank** (landing pages, product copy, meta descriptions, and every heading). Wrap the durable prose you'd rather keep out of a training set: essays, manifestos, long-form.
+- **Everything a human reader loses** is listed in one place below: [what protecting a block breaks](#what-protecting-a-block-breaks).
 - **The default dictionaries are public.** `alpha`/`beta`/`gamma`/`m15en` (the `maxhide` dictionary) ship as plaintext JSON in `@shieldfont/core`, and `@shieldfont/font` publishes a browser encoder (`shieldfont-encoder.js`, 277 KB) with all 11,970 `alpha` pairs inlined. Anyone can fetch either from npm or the CDN. Defaults are a convenience, not a secret; if you want a dictionary nobody else has, see [custom mappings](./custom-mappings.md).
 - **The font is invertible.** It has to reach the browser to render your page, and its composite glyphs are drawn from the original words' own letters, so anyone who downloads it can read the substitution table back out. We recovered all 11,962 word pairs from our own shipped font with no dictionary (the remaining 8 entries are single-digit swaps, which have no word glyph to read). What that attack actually requires is knowing in advance that a page is shielded, identifying and fetching the right font, matching it to the right part of the page, and having already built an OpenType inverter to do it with, which is **one-time engineering** of one to three engineer-weeks. Mass scraping does none of those things: it fetches many sites without examining any of them individually. This is the load-bearing caveat: ShieldFont raises the cost for scrapers that don't stop to inspect; it does not make text unrecoverable, and a determined attacker aiming at one specific site will succeed.
-- **JS off + font 404.** The fail-loud font guard is JavaScript; with JS disabled and the font missing, a human sees the raw decoy text.
 - **Coverage is partial by design.** The default `alpha` mapping deliberately leaves common function words in place, so a short sentence may change only ~2 of its ~11 words. The output is a *plausible decoy*, not gibberish.
 - **English only, for now.** The shipped dictionaries (`alpha`/`beta`/`gamma` and the coverage-max `maxhide`) are English; multilingual mappings are on the [roadmap](../ROADMAP.md). Leave non-English content unwrapped.
-- **Ctrl-F stops working inside protected text.** Find-in-page searches the DOM, so a reader who can plainly see a phrase on screen will search for it and find nothing. There is no fix; it is the same gap the whole design rests on.
 - **AI assistants will describe your page incorrectly to your own readers.** This is the mechanism working, not failing: an assistant reads the DOM, so someone who asks one to summarise your essay gets a confident summary of the decoy. Worth knowing before you shield something you also want discussed accurately.
+
+### What protecting a block breaks
+
+One list, because these used to be scattered across four documents and nobody found all of them. Everything here follows from the same fact: **the DOM holds decoy words and the font is the only thing that makes them read correctly.** Anything that reads the page without the font, or renders the page without the font, gets the decoy.
+
+| What breaks | What the reader actually experiences | What helps |
+|---|---|---|
+| **Copy and paste** | A selection touching protected text puts decoy words on the clipboard. Silently: the paste looks like ordinary English, so a reader quoting your paragraph misquotes you and never finds out. | In `@shieldfont/react`, the copy handler can intercept it and put a short explanatory notice on the clipboard instead of silent decoys. Once a block is unlocked in that browser, copy yields the real words. Outside React, nothing. |
+| **Find-in-page (`Ctrl/⌘-F`)** | Nothing found. Find-in-page searches the DOM, so a reader searching for a phrase they can plainly see on screen gets no result. | Nothing. No fix exists; it is the same gap the whole design rests on. |
+| **Browser translation** | Chrome/Firefox/Safari translate the DOM, so a reader gets a fluent translation of the *decoy* in their own language, with nothing marking it as wrong. Worse than an untranslated page. | Unlocking a block on screen puts the real words in the DOM, so translation then works on them. |
+| **Reader Mode / simplified view** | Reader views extract the text and re-render it in their own typeface, so the font never applies and the decoy shows as-is. Same failure shape as forced fonts, minus the reader having chosen it. | Nothing today. |
+| **Forced fonts** | The reader has told the browser to use *their* font instead of yours — Firefox with **"Allow pages to choose their own fonts"** unchecked, a dyslexia-friendly font extension, some high-contrast and OS-level accessibility setups. The decoy renders in that font. They read fluent, grammatical, **wrong** English and get **no signal at all**. | The visible wrapper, and currently nothing else. See below. |
+| **Feeds and the page disagree** | `/feed.xml`, JSON-LD, OpenGraph and CMS APIs are generated from your source data, so they ship **plain English** while the page ships decoy. A subscriber and a visitor read two different texts, and a crawler that never knew your site was shielded gets the original. | [The plaintext side doors](#the-plaintext-side-doors-close-these-or-the-rest-is-theatre), below. Summaries only; never encode the feed. |
+| **Decoy reaching a screen reader** | Protected regions are `aria-hidden`, so they are **not** read in normal linear or heading navigation — a listener going down the page hears silence, not a fluent wrong paragraph. That is not the same as unreachable: NVDA's mouse-tracking and screen-review modes, and touch exploration on iOS and Android, read the DOM by position and **can** surface decoy words. Reported by a real reader in [#2](https://github.com/isaqueseneda/shieldfont/issues/2). | The accessible path beside the block: [`plain-text-mode.md`](./plain-text-mode.md). It does not stop the decoy being reachable by exploration. |
+| **JS off + font 404** | The fail-loud font guard is JavaScript. With scripts disabled *and* the font missing, nothing replaces the block with *"Content unavailable"* and a human reads the raw decoy. The accessible path needs JavaScript too, so it is gone in the same breath. | Nothing. Ship the fonts. |
+
+#### Forced fonts: the one with no signal
+
+Every other row on that list either fails loudly or fails empty. This one fails **fluently**, and the code cannot see it happen.
+
+When a browser applies a forced font, your `@font-face` still loads and `document.fonts` still reports success — the browser simply declines to *use* it. `getComputedStyle` reports the family you asked for either way, because it reports the computed style, not what the rasteriser did. So the font-load guard, which exists precisely to stop a reader ever seeing a raw decoy, **cannot detect this case** and will not fire. There is no known way to detect it from script.
+
+The reader who hits it is, disproportionately, a reader who forced fonts for a reason: low vision, dyslexia, a contrast requirement. They get your essay with roughly one word in five replaced by a different, plausible word, and nothing anywhere on the page telling them so. [oddron raised this in #2](https://github.com/isaqueseneda/shieldfont/issues/2) and was right that it needs no testing to confirm: the font *is* the rendering, so overriding the font gives you decoys.
+
+The only mitigation that reaches that reader today is the **visible wrapper** — the outline, the strip of explanation and the on-screen controls that `@shieldfont/react` draws around a protected block, which is what a bare `<Shield>` renders by default. It is ordinary DOM in whatever font the reader forced, so it says what the block is and offers the real words in a form they can actually read. It costs the concealment the rest of the package works for: measured over 25 renders, a drawn block's markup runs to a median of about **11 kB**, against **247 bytes** for a block with the accessible path switched off entirely. That is exactly the trade — you have decided to announce yourself — and it is the right default for content readers with visual impairments are likely to read.
 
 ### The plaintext side doors (close these, or the rest is theatre)
 
@@ -63,7 +86,7 @@ Wrapping should be intentional, block by block: don't auto-encode every text nod
 - Navigation labels, button labels, footer copyright
 - Logo `alt` text and image `alt` attributes
 - Code samples (`<code>`, `<pre>`)
-- Headings that are also page titles (those should match the meta title)
+- **Every heading.** Not just page titles — see [Headings: don't shield them](#headings-dont-shield-them) below
 - Form placeholders and error messages
 - Anything an end-user might paste into translation software
 - Text that is duplicated in an attribute on the same element (a link whose visible label repeats its own `href`, an `alt` that repeats its caption). Attributes are skipped by design and the visible text is encoded by design, so the pair sits side by side in the source.
@@ -74,6 +97,52 @@ Protect:
 - Body paragraphs of articles, posts, manifestos
 - Author bios and long-form descriptions
 - Anything the writer wants to be the durable, non-extractable version of their work
+
+#### Headings: don't shield them
+
+**Shield body prose. Leave every heading alone.** Not "headings that double as
+page titles" — the skip-list above used to say that, and the narrower rule is
+what let `<Shield as="h2">` drift into this guide as a good example. All of them.
+
+The reason is about what is left. Once you shield your body paragraphs, the text
+a search engine reads is the decoy — fluent, grammatical and wrong. Your
+headings, `<title>` and meta description are then the **only accurate text on
+the page**, so they are worth keeping real, and worth writing well. Shield a
+heading too and you are not losing a signal, you are replacing it with a
+confident, wrong summary of the section beneath it. That is the difference
+between a page that says less and a page that misinforms.
+
+Be clear about how much this buys, because it is not an SEO strategy: **keeping
+your headings real does not make a shielded page rank.** Search engines weigh
+body content most heavily and yours is a decoy — the rule elsewhere in this guide
+is *never wrap for ranking*, and that rule is unchanged. Heading tags themselves
+carry little ranking weight; Google has said repeatedly that heading hierarchy is
+not a meaningful ranking factor and that a missing `<h1>` is not a penalty. So
+this is damage limitation, not an upside. If ranking matters for a page, do not
+shield the page.
+
+Two other things a shielded heading costs, both worth more than the SEO point:
+
+- **Headings are how a screen reader user skims.** A protected heading is
+  `aria-hidden` like any other protected block, so it leaves a hole in the
+  heading list — the one navigation aid that makes a long article usable
+  without sight.
+- **Headings escape the page.** They show up in search snippets, in link
+  previews when somebody shares the page, and in the browser tab if the heading
+  is also the title. Those surfaces render your decoy with no font to fix it.
+
+Not enforced at runtime. `<Shield>` will not warn you for passing `as="h2"`,
+because this package's existing warnings are load-bearing and diluting them with
+advisory ones teaches people to ignore all of them. It is a rule for you, not a
+guard rail.
+
+**Leaving a heading alone used to mean leaving it in a different typeface**,
+which is why the rule was easy to break: a page of shielded paragraphs in Optik
+with headings in the host stylesheet's fallback looks like two designs stapled
+together, and the obvious fix — setting `font-family: Optik` on the heading —
+renders the decoy. On the React tier, [`<NonShield>`](#nonshield-unprotected-text-in-the-same-typeface)
+is the supported way out: the heading stays real, indexable and readable, and
+still renders in the shipped face.
 
 ---
 
@@ -90,7 +159,7 @@ The encoded form is what's stored, what's served, what's cached. Identical to ho
 
 ## Dynamic sites
 
-If you're building a React / Next.js / Remix / Astro app, you ship ShieldFont as a server component. Encoding happens in Node before anything is sent, so your original text never reaches the browser: no runtime cost, no build script. A static export is fully protected; no runtime server is required. See **Tier A** below for the full integration.
+If you're building a React / Next.js / Remix / Astro app, you ship ShieldFont as a server component. Encoding happens in Node before anything is sent, so your original text never reaches the browser in readable form: no runtime cost, no build script. A static export is fully protected; no runtime server is required. See **Tier A** below for the full integration.
 
 [Jump to Tier A, JSX with @shieldfont/react ↓](#tier-a-jsx-with-shieldfontreact)
 
@@ -98,7 +167,7 @@ If you're building a React / Next.js / Remix / Astro app, you ship ShieldFont as
 
 ## Tier A: JSX with `@shieldfont/react`
 
-The recommended path, and the one we would like you to end up on. Encoding runs in Node, so your original text never reaches a browser; the font files are neutral and self-hosted, so nothing in your served bytes names ShieldFont; there is no secret to store; and it is the only tier where variant rotation works, because it is the only one that emits the matching `@font-face` next to each block. Vibe-coders, Next.js apps, Astro, Remix, and any React Server Component framework.
+The recommended path, and the one we would like you to end up on. Encoding runs in Node, so your original text never reaches a browser in readable form (with `screenReader` on — the default — it also ships **encrypted**, behind the time-lock puzzle, which is the accessible path and not a leak); the font files are neutral and self-hosted, so nothing in your served bytes names ShieldFont; there is no secret to store; and it is the only tier where variant rotation works, because it is the only one that emits the matching `@font-face` next to each block. Vibe-coders, Next.js apps, Astro, Remix, and any React Server Component framework.
 
 ### Install
 
@@ -124,9 +193,10 @@ export default function Page() {
         Our mission is to build a publishing layer that the open web can trust.
       </Shield>
 
-      <Shield as="h2" size="2.4rem">
-        Manifesto
-      </Shield>
+      {/* Headings stay UNSHIELDED — see "Headings: don't shield them" above.
+          Once the body is a decoy, your headings are the only accurate text a
+          search engine or a screen reader's heading list gets. */}
+      <h2 style={{ fontSize: "2.4rem" }}>Manifesto</h2>
     </article>
   );
 }
@@ -178,6 +248,125 @@ Each of those is a genuine Playtype static cut run through the same encoding pip
 The `OPTIK_WEIGHTS` export, the exact numeric bands each face claims, and what an unknown weight name throws are all in the [`@shieldfont/react` README](../packages/react/README.md#weights-what-actually-ships).
 
 > **This is a Tier A feature and only a Tier A feature.** `@shieldfont/font` (Tiers B and C) and the downloadable font (Tier D) ship **Regular only**. See [the CSS tier's note](#tier-c-css-import--paste) below.
+
+### `<NonShield>`: unprotected text in the same typeface
+
+`<NonShield>` renders its children **exactly as written**, in Optik. Nothing is
+encoded, nothing is `aria-hidden`, there is no sealed payload, no puzzle, no
+decoys, no copy guard and no notice strip. The words in the DOM are the words on
+screen: a screen reader reads them, a search engine indexes them, a translator
+translates them, copy-paste copies them, and find-in-page finds them.
+
+```jsx
+import { Shield, NonShield } from "@shieldfont/react";
+
+<article>
+  <NonShield as="h2">The future of writing</NonShield>
+  <Shield as="p" variant="alpha">{body}</Shield>
+  <NonShield as="p" size="0.9rem">Photograph by <em>Jane Roe</em></NonShield>
+</article>
+```
+
+It exists for one reason: a ShieldFont page has always had two kinds of type on
+it. The shielded paragraphs render in Optik, and the headings, decks, captions
+and nav around them render in whatever fallback your stylesheet supplies,
+because there was no supported way to put unprotected text in the shipped face.
+It is also where [Headings: don't shield them](#headings-dont-shield-them)
+finally lands: `<NonShield as="h2">` honours that rule and still gets the
+typeface.
+
+Unlike `<Shield>`, it accepts **arbitrary JSX** — links, `<em>`, fragments,
+numbers, `null`. There is no encoder to blind here, so there is nothing for a
+nested component's text to fall out of. `font-family` and
+`font-feature-settings` are both inherited, so a nested `<a>` picks up the
+typeface and the substitution-off rule without being touched.
+
+#### Why this is not a `font-family` rule you could have written yourself
+
+> [!WARNING]
+> **The shipped `optik-*.woff2` files are not the Optik typeface. They are
+> *shielded builds* of it, and setting `font-family: Optik` on ordinary text
+> renders the decoy.** The failure is completely silent.
+
+`scripts/generate_font.py` injects the word-substitution lookups into the
+OpenType **`ccmp`** feature — which is on by default, and which
+`font-variant-ligatures: none` does not reach (that property governs
+`liga`/`clig`/`dlig`/`hlig`). The substitution dictionary is an **involution**:
+`m[m[x]] === x`, which is why `decode` in `@shieldfont/core` is literally
+defined as `encode`. Every word in the dictionary is therefore both an original
+and a decoy, and the font swaps it either way. Measured by shaping text through
+the shipped `optik-a.woff2` with HarfBuzz:
+
+| You write | A shielded face draws |
+|---|---|
+| `Read the docs` | composites built from the letters `Reset`, `sellers` |
+| `belongs` | a composite built from the letters `determines` |
+| `2026 report` | `2527 report` |
+| `Chapter 7` | `Chapter 6` |
+
+11,962 of the 11,970 words in the `alpha` dictionary shape to a substituted
+composite. This is the same trap the
+[Tier C paste warning](#step-2-per-paragraph-paste-anywhere-in-body-content) and
+the [Word/Pages warning](#tier-d-download-microsoft-word--pdf) describe, met from
+the other direction — and a component that quietly did it would be far worse
+than either warning, because nothing errors. The page renders, the bytes are
+correct, and a heading just says the wrong thing.
+
+`<NonShield>` sets **`font-feature-settings: "ccmp" 0`** on the element it
+renders, which switches the substitutions off. With `ccmp` disabled all 11,970
+dictionary words shape to their own letters; the only differences left are the
+base font's legitimate `fi`/`fl` ligatures, and accented text is untouched in
+both NFC and NFD.
+
+Because `font-feature-settings` **inherits**, `<Shield>` now declares
+`font-feature-settings: normal` on its own element. A `<Shield>` nested inside a
+`<NonShield>` would otherwise inherit `"ccmp" 0`, stop substituting, and publish
+its decoy text at full readability with nothing logged and nothing on screen to
+show it. The same applies to any stylesheet of your own that turns `ccmp` off
+across a page.
+
+**Outside React there is no `<NonShield>`.** On Tiers B, C and D the shipped CSS
+sets only `font-family`, so if you want unprotected text in the same face you
+add `font-feature-settings: "ccmp" 0` to that rule yourself — and if you forget,
+the page renders decoys.
+
+#### Props
+
+| Prop | Type | Default | Purpose |
+|---|---|---|---|
+| `as` | `ElementType` | `"div"` | Which element to render. No table-tag restriction: `<NonShield>` renders one element and no wrapper, so `as="td"` is a `<td>`. |
+| `variant` | `"alpha" \| "beta" \| "gamma" \| "maxhide"` | `"alpha"` | **Which file the browser fetches, and nothing else.** With substitutions off, all four faces draw identical outlines. |
+| `weight` | one of the six cut names, or `1..1000` | inherit | Same six real cuts and the same nearest-cut snapping as `<Shield>`; `font-synthesis: none` for the same reason. |
+| `lineHeight` / `size` / `className` / `style` | | inherit / n/a | Passthroughs. `style` merges **over** the internal scope, so it can override `fontFeatureSettings` — which re-enables the substitutions on text that is not encoded. |
+| `children` | `ReactNode` | | Rendered verbatim. Arbitrary JSX allowed. |
+
+Any other prop **throws**, the same fail-loud treatment `<Shield>` gives an
+unrecognised prop.
+
+#### What it deliberately does not do
+
+- **`variant` does not auto-rotate, and there is nothing for it to spread.**
+  `<Shield>` rotates across `alpha`/`beta`/`gamma` because the mapping changes
+  what a scraper reads; here nothing is encoded, so rotation would only pull a
+  second ~825 KB file onto a page to render text identically. Pin `<Shield>` to
+  the same variant your `<NonShield>`s use and the whole page is one font
+  download.
+- **It emits no font-load guard, and it is not covered by `<Shield>`'s.** It
+  does not stamp the `data-typeface` attribute the guard's selectors are scoped
+  to. That is deliberate: when a face fails to load, `<Shield>`'s guard blanks
+  every matching block behind a skeleton, which is right when the alternative is
+  painting raw decoys and wrong here — a missing font leaves `<NonShield>`
+  rendering **the correct words in a fallback face**, so the design is degraded
+  and the content is fine. Seeding its weights into the guard would also let a
+  missing `optik-a-800.woff2` used by one heading skeletonise every genuinely
+  shielded block on the page.
+- **It shares the `@font-face` stylesheet with `<Shield>`.** A page mixing the
+  two emits exactly one stylesheet per family, whichever component renders
+  first, and a `<NonShield>` that renders first does not starve `<Shield>` of
+  its guard.
+- **It is safe in a `"use client"` component.** There is no plaintext to leak
+  and no dictionary in play, so it emits none of `<Shield>`'s client-render
+  warning.
 
 ### Host the font (required: self-host by design)
 
@@ -322,7 +511,7 @@ The lowest-friction path for blogs, hosted CMSes (WordPress, Ghost, Squarespace)
 ### Step 1: One-time install (paste into your site's CSS)
 
 ```css
-@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css');
+@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css');
 ```
 
 Where to put it depends on your platform:
@@ -330,7 +519,7 @@ Where to put it depends on your platform:
 - **WordPress**: Appearance → Customize → Additional CSS (Customizer plan and above), or your theme's `style.css`.
 - **Ghost**: Settings → Code injection → Site header (or the Custom CSS field if your theme exposes one).
 - **Squarespace**: Design → Custom CSS (this panel is available on every plan; the Code Injection panel is gated to Business+ but you don't need it for this).
-- **Plain HTML / static sites**: either drop the `@import` into your existing stylesheet, or use `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css">` in `<head>`. The `<link>` form is marginally faster (parses in parallel with HTML): prefer it if you have `<head>` access.
+- **Plain HTML / static sites**: either drop the `@import` into your existing stylesheet, or use `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">` in `<head>`. The `<link>` form is marginally faster (parses in parallel with HTML): prefer it if you have `<head>` access.
 
 This stylesheet declares `@font-face` for `'Optik'` and ships a `.tk9` utility class.
 
@@ -378,7 +567,7 @@ it in your browser, and use it exactly like the hosted one:
 <button onclick="go()">Encode</button>
 <textarea id="out" rows="8" cols="60"></textarea>
 <script type="module">
-  import { encode, alpha } from "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont-encoder.js";
+  import { encode, alpha } from "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont-encoder.js";
   window.go = () => {
     document.getElementById("out").value =
       encode(document.getElementById("in").value, alpha);
@@ -449,7 +638,7 @@ For documents you'll edit later, also keep a plain-English source copy somewhere
 Every CDN URL we publish is **version-pinned and immutable**. No "latest" channels: silently upgrading the mapping would break existing encoded content.
 
 ```
-✅ https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css
+✅ https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css
 ❌ https://cdn.jsdelivr.net/npm/@shieldfont/font@latest/shieldfont.css
 ```
 

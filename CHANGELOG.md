@@ -6,9 +6,151 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [0.3.2] — 2026-08-03
 
 ### Removed
+
+- **`notice` no longer works as a silent alias for `wrapper`.** It was the 0.3.0
+  spelling of the same prop and kept resolving quietly while `explain` — the
+  other old spelling — threw. One mistake was loud in one spelling and silent in
+  the other, and no document mentioned `notice`, so nobody could have known it
+  was still there. It now throws and names `wrapper`, like `explain` does. The
+  value is unchanged, so renaming the key is the whole migration.
+
+
+### Added
+
+- **`wrapper={{ className }}` — a styling hook on the drawn wrapper.** The box,
+  its strips, the sentence and the Uncover/Copy buttons had no hook at all:
+  `<Shield className>` lands on the encoded block and on the element the
+  revealed words go into, i.e. on the text, and nothing reached the furniture.
+  The reported case is the Uncover button inheriting colours from the emitted
+  stylesheet, which cannot know a host page's dark mode.
+
+  It is a separate field rather than a widening of `<Shield className>` on
+  purpose. That prop already has a documented, shipped meaning, and making it
+  also hit the wrapper would silently change what existing stylesheets do on
+  upgrade — a rule setting an article's measure and line-height would start
+  applying to the box and both strips, with nothing to say so. `<NonShield>`'s
+  `className` is unchanged: it renders one element and has no furniture, so
+  there is nothing to disambiguate.
+
+- **`<NonShield>` in `@shieldfont/react` — the page's ordinary text, in the same
+  typeface.** It renders its children exactly as written, in Optik: no encoding,
+  no decoys, no `aria-hidden`, no sealed payload, no puzzle, no copy guard, no
+  notice strip. A screen reader reads it, a search engine indexes it, a
+  translator translates it, copy-paste copies it, find-in-page finds it.
+
+  It exists because a ShieldFont page always had two kinds of type on it. The
+  shielded paragraphs rendered in Optik and the headings, decks, captions and
+  nav around them rendered in whatever fallback the host stylesheet supplied,
+  because there was no supported way to put unprotected text in the shipped
+  face. It also gives `docs/integration.md`'s own rule somewhere to land:
+  headings must never be shielded, and `<NonShield as="h2">` is how a heading
+  stays real *and* in the right typeface.
+
+  **It is not a `font-family` rule with a component around it, and must never be
+  reimplemented as one.** The shipped `optik-*.woff2` files are not the Optik
+  typeface — they are *shielded* builds of it. `scripts/generate_font.py` wires
+  the substitution lookups into the OpenType `ccmp` feature, which is on by
+  default and which `font-variant-ligatures: none` does not reach, and the
+  dictionary is an **involution** (`m[m[x]] === x`, which is why `decode` is
+  defined as `encode`). Every word in it is therefore both an original and a
+  decoy and the font swaps it either way, so plain English through a shielded
+  face renders the **decoy**. Shaped through the shipped `optik-a.woff2` with
+  HarfBuzz: `"Read the docs"` draws as composites built from the letters
+  `"Reset"` and `"sellers"`, `"belongs"` draws as `"determines"`, `"2026
+  report"` draws as `"2527 report"`. 11,962 of the 11,970 `alpha` words behave
+  that way, and **nothing errors** — the page renders, the bytes are correct,
+  and a heading just says the wrong thing.
+
+  `<NonShield>` sets `font-feature-settings: "ccmp" 0`, which is exact rather
+  than approximate: with the feature off, all 11,970 dictionary words shape to
+  their own letters, the base font's real `fi`/`fl` ligatures survive, and
+  accented text is untouched in both NFC and NFD.
+
+  Arbitrary JSX is accepted, which `<Shield>` rejects — there is no encoder to
+  blind here, so there is no protected form for nested content to fall out of,
+  and the content this component exists for (headings, captions, nav) is the
+  content most likely to contain a link or an emphasis. Any prop it does not
+  recognise throws, the same fail-loud treatment `<Shield>` gives one. It is
+  safe inside `"use client"`: no plaintext to leak, no dictionary in play.
+
+  **Stated limits, because they are not obvious.** `variant` selects only which
+  file the browser fetches — with substitutions off, all four faces draw
+  identical outlines — so it is a bandwidth choice, and it deliberately does
+  **not** auto-rotate the way `<Shield>`'s does. And it emits **no font-load
+  guard** and is not covered by `<Shield>`'s: it does not stamp the
+  `data-typeface` attribute the guard's selectors match, so a missing font
+  leaves it rendering the correct words in a fallback face rather than blanking
+  them behind the "Content unavailable" skeleton. Seeding its weights into the
+  guard would also mean a missing `optik-a-800.woff2` used by one heading could
+  skeletonise every genuinely shielded block on the page.
+
+### Changed
+
+- **`<Shield>`'s `explain` prop is now `wrapper`, and passing `explain` throws.**
+  The prop decides whether the visible box is DRAWN on screen. `explain` named
+  the sentence printed inside the box — one of the things the box contains — and
+  read as though `explain={false}` would keep the box and drop the words. The
+  value is unchanged: the same `boolean | ShieldNotice`, with the same nested
+  `text`, `labels`, `position` and `className`.
+
+  There is **no silent alias**. `explain` is rejected with a message naming
+  `wrapper`, for the reason this package fails loud everywhere else: an alias
+  leaves two spellings of one prop alive in every codebase that used the old
+  one, and the next person reading that code has to know both. A block that
+  quietly kept `explain` would render with the wrapper's default rather than the
+  setting its author asked for, which is exactly the silent kind of wrong the
+  component throws to avoid.
+
+- **The four tier names — FULL, INVISIBLE, MINIMAL and SEALED SHUT — are
+  deleted.** They were never API: there was no `tier` prop, only a table in a
+  comment mapping each invented name onto a combination of `screenReader`,
+  `wrapper` and `copyPaste`. A reader had to memorise the mapping before the
+  names told them anything, and the three props say the same thing with nothing
+  to memorise. Nothing is replacing them; the switches are described one at a
+  time, each with what it costs.
+
+  All three default to **on**, and the documentation now says exactly what the
+  code does. `screenReader` defaults on unconditionally. `wrapper` and
+  `copyPaste` default on wherever there is a seal to open — i.e. wherever
+  `screenReader` is on — because both are inert without one and both throw if
+  asked for explicitly with it off. `wrapper` has one further exception, which
+  is not new but was undocumented: an inline tag (`as="span"` and the rest)
+  never draws it, because the wrapper is a block-level box and a `<div>`
+  mid-paragraph breaks both the layout and hydration.
+
+  Two claims in the old `copyPaste` doc comment were stale and are corrected:
+  it does **not** default to whatever the wrapper is. It has followed the
+  presence of a seal since 0.3.2, and the independence is the point — a decision
+  about whether to draw a box should not silently decide whether a copied
+  paragraph comes out wrong.
+
+- **`<Shield>` now declares `font-feature-settings: normal` on its rendered
+  element.** `font-feature-settings` is an inherited property and every word
+  swap in this package rides the `ccmp` feature, so any ancestor that turns
+  `ccmp` off turns the shield off — the browser draws the raw decoy text at full
+  readability, the page looks completely normal, nothing throws, nothing 404s,
+  and the font-load guard stays silent because the font loaded fine.
+  `<NonShield>` sets exactly that rule, so a `<Shield>` nested inside one was
+  the concrete case; an author stylesheet doing the same thing is the general
+  one. The inline declaration re-enables the feature at the shielded element
+  itself, where it beats anything inherited.
+
+- **The time-lock puzzle was re-costed against a corrected OCR measurement.**
+  `DEFAULT_SECONDS` is **14** (was 20) and the accepted range is **1..30** (was
+  5..120), so the default is **1,680,000** sequential squarings rather than
+  5,000,000. `REFERENCE_SQUARINGS_PER_SECOND` moved **down** to **120,000** (was
+  250,000): the old figure was described as "a deliberately slow reference
+  device" and was in fact 96% of one of the fastest consumer cores in existence,
+  so every author who reasoned from it was told their readers would wait N
+  seconds and their readers waited longer. The old default's reasoning was wrong
+  in three places at once — it put render+OCR at ~3 CPU-seconds per page when it
+  measures ~5.0, assumed server cores beat a laptop at bignum work when they do
+  not, and costed the puzzle per *page* while the component seals per *block*.
+  Reader-side, the default now takes about **2.5 s** in a warmed Chrome worker on
+  Apple Silicon.
 
 - **`a11y={{ mode: "audio", src }}` is gone.** It shipped in 0.3.0 as one of the
   two ways to give a shielded block a real alternative: you synthesised a
@@ -50,6 +192,75 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `screenReader={false}` / `a11y={{ mode: "none" }}` / `a11y={{ mode: "audio" }}`",
   which after this release would send an author to configure a mode that does
   not type-check. The remaining two spellings of "off" are unchanged.
+
+### Fixed
+
+- **The Uncover button was blank on a dark page.** Its fill is the host's text
+  colour, which is deliberate; its glyphs were `Canvas`, on the reasoning that
+  the UA canvas is the host's page colour so it must contrast. `Canvas` is not
+  the host's page colour — it is what the user agent would paint, and it only
+  goes dark when the document opts in with `color-scheme: dark`. A site with a
+  hand-rolled dark theme (`body { background: #111; color: #eee }`, which is how
+  most dark themes on the web are actually built) left `Canvas` white, so the
+  button drew near-white glyphs on a near-white fill. Measured: **1.16:1** on
+  that host, **1.09:1** on `#0b0b0b`/`#f5f5f5`, **1.23:1** under Tailwind
+  Preflight with a slate theme, **1.00:1** under Windows High Contrast. Not
+  "hard to read" — a button with nothing drawn on it.
+
+  The glyph colour is now derived from `currentColor` itself with relative
+  colour syntax, so it asks the fill rather than the user agent. The same three
+  hosts now measure **18.1:1**, **19.3:1** and **17.0:1**, and forced-colors
+  gets a block of its own using `ButtonFace`/`ButtonText`/`ButtonBorder`. The
+  wrapper still inherits the host's text colour; nothing in it is a fixed
+  palette. Browsers without relative colour (pre-Chrome 119 / Safari 16.4 /
+  Firefox 128) get an outlined Uncover button instead of a filled one, which is
+  plainer than intended and legible on any host.
+
+- **Three more contrast failures found by the same audit.** The strip's sentence
+  faded `currentColor` to `.7`, which measured 4.14:1 on a Tailwind `gray-700`
+  body — one of the most-deployed pairs of colours on the web — and the loading
+  line at `.72` measured 4.36:1; both are `.8` now (5.40:1 and 5.13:1). The copy
+  confirmation's green and red were keyed to `prefers-color-scheme`, which is
+  the reader's operating system and not the colour of the page they are looking
+  at, so a dark site on a light OS got 3.68:1 and a light site on a dark OS got
+  1.55:1; they are derived from `currentColor`'s lightness now (7.05:1 and
+  11.9:1). No fixed colour could have fixed the last one: a green dark enough
+  for 4.5:1 on white and a green light enough for 4.5:1 on `#111` do not overlap.
+
+- **Host stylesheets could resize the controls.** The buttons' `font-size:.66rem`
+  and the toast's `.82rem` are the HOST's root font size, so a page using the
+  old `html { font-size: 62.5% }` trick drew the button labels at **6.6px** —
+  uppercase, 500 weight, and invisible to every contrast checker because the
+  colour was perfect. Both are absolute now (11px and 13px, what those rem
+  values resolved to on a default host), and the buttons declare their own
+  `line-height` so the pill's height is not the host's decision either. The
+  buttons' outline was `rgba(128,128,128,.34)`, which measured 1.45:1 against
+  the strip on every light host; it is `currentColor` at 62% now, over 3:1 on
+  every host measured, with a mid-grey fallback.
+
+  The emitted stylesheet grows by **1,715 bytes raw / 263 gzipped** per scope.
+
+### Added
+
+- **`npm run test:style` — the wrapper measured inside seventeen hostile host
+  pages,** wired into CI beside the axe scan. `scripts/style-audit.mjs` renders
+  the drawn wrapper under Tailwind Preflight, a `* { margin: 0 }` reset,
+  `button { all: unset }`, `button { font-size: inherit !important }`,
+  `* { line-height: 1 !important }`, a global `svg { width: 100% }`,
+  forced-colors, 10px and 24px root font sizes, `dir="rtl"`, and four
+  combinations of light/dark host and light/dark OS. For each it reports the
+  computed contrast of the sentence and of every button label and icon against
+  the background actually painted behind them, whether each control still has a
+  perceivable boundary, whether anything overflows, whether the icons still have
+  size, and whether each button is hit-testable at its centre point.
+
+  It walks the ancestor chain and **accumulates opacity** on the way down, which
+  is the reason it exists and not a detail: `getComputedStyle` reports a child's
+  own opacity as 1 while an ancestor paints the whole subtree at 0.7, and an axe
+  run had already returned a false all-clear on that exact element. Every number
+  in the two entries above came out of this script, and every one of them was
+  invisible to the four checks that ran before it. The bug report it was written
+  for was one sentence long and nobody could say what it meant.
 
 ## [0.3.1] — the solver stops fighting React hydration
 

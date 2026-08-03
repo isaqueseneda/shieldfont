@@ -16,6 +16,7 @@ Same bytes on the wire: two different readers.
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-22c55e.svg?style=for-the-badge)](./CONTRIBUTING.md)
 [![Code of Conduct](https://img.shields.io/badge/Code_of_Conduct-2.1-7c3aed.svg?style=for-the-badge)](./CODE_OF_CONDUCT.md)
 
+[**⚠️ Accessibility warning**](#-read-this-first-shieldfont-breaks-accessibility)&nbsp;&nbsp;·&nbsp;&nbsp;
 [**What it is**](#what-it-is)&nbsp;&nbsp;·&nbsp;&nbsp;
 [**See it work**](#see-the-trick)&nbsp;&nbsp;·&nbsp;&nbsp;
 [**Quick start**](#quick-start)&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -26,19 +27,83 @@ Same bytes on the wire: two different readers.
 
 <br />
 
-> **Current release: v0.3.0.** Default mapping: v18 `alpha`. Install from
+> **Current release: v0.3.2.** Default mapping: v18 `alpha`. Install from
 > npm (`@shieldfont/react`, `@shieldfont/core`, `@shieldfont/font`) or paste
 > in the [CDN font](#quick-start). Live site at <https://shieldfont.org>.
 
+## ⚠️ Read this first: ShieldFont breaks accessibility
+
+> [!WARNING]
+> **ShieldFont deliberately withholds the real text of a protected block from
+> the page source.** That is the mechanism, not a defect, and it holds with
+> every accessibility feature switched on. The words are not programmatically
+> available to assistive technology until a reader completes an unlock that
+> takes **a few seconds** of their own CPU and requires JavaScript, a modern
+> browser (`BigInt`, `crypto.subtle`) and an https origin. **A protected block
+> fails WCAG 2.2 SC 1.3.1.** An audit will flag every block you wrap. This is
+> inherent to the design and will not be patched out: the day the real words
+> are cheaply available to a machine reading the page is the day the font stops
+> working.
+
+**If accessibility law applies to your site, don't put ShieldFont on it.** The
+ones that come up: the **ADA**, including the Title II web rule covering US
+state and local government; **Section 508**; the **European Accessibility Act**
+and **EN 301 549**; the **UK Equality Act 2010**. We are not lawyers and we are
+not going to tell you which of them reaches you. The rule doesn't need a lawyer:
+if one of them applies to your site, or you claim WCAG conformance anywhere on
+it, protected content must not be inside what that claim covers.
+
+**What the accessible path is.** In `@shieldfont/react` it is on by default
+(`screenReader`, spelled `a11y={{ mode: "text" }}` in older code). The real
+words ship inside the page, encrypted, and the reader's own browser grinds out
+the key when they ask for it. There is nothing for you to host and **no
+plain-text URL anywhere** — a URL offered to a screen reader is offered to every
+scraper reading the same page, which is why the `0.2.0` link was removed. So the
+words are genuinely obtainable, by any human who wants them, on their own
+device, without asking you for anything. That is a real alternative and we stand
+behind it.
+
+**What it is not is conformance.** Access is delayed, unequal and
+JavaScript-dependent: everyone else reads instantly while the reader who needs
+the alternative waits, and a reader with JavaScript off gets nothing at all. No
+auditor is obliged to accept *"available after a few seconds of grinding"* as
+programmatically determinable, and we don't think one should be. The
+accessibility props do not make a page compliant and we will never say they do.
+The defensible claim is the narrower one: they make a protected page **humane**
+instead of silent. Note also that all of it is **React-only** — the CDN paste-in
+and `@shieldfont/core` ship none of it, so on those tiers you set `aria-hidden`
+and build the alternative yourself, or you leave the content unwrapped.
+
+**Where this is reasonable.** An author's own words, on their own site, by their
+own informed choice: personal blogs, essays, fiction, manifestos, criticism —
+writing whose value is that a person wrote it, published by the person who wrote
+it. **Where it is not:** government and public-sector pages, anything
+procurement-bound, anything service-critical (health, benefits, banking, safety,
+legal notices, documentation people need to do their job), and anything your
+readers need to quote, search or cite.
+
+The full list of what wrapping a block costs a human reader — copy-paste,
+find-in-page, browser translation, Reader Mode, forced fonts, feeds, and the
+decoy a screen reader can still reach by hover or touch — is
+[**what protecting a block breaks**](./docs/integration.md#what-protecting-a-block-breaks).
+This warning exists because [ssb22 asked for it in
+#2](https://github.com/isaqueseneda/shieldfont/issues/2).
+
+---
+
 > [!IMPORTANT]
 > **About the shipped fonts.** The default fonts are built on **Optik**, a
-> proprietary typeface © [Playtype](https://playtype.com), used in ShieldFont's
-> shielded (word-substitution) form with Playtype's permission (see
-> [`NOTICE`](./NOTICE)). They are **not** open-source and **not** under the SIL
-> Open Font License: the permission covers the Optik-derived variants
-> distributed with ShieldFont, not the original outlines. The **code** is
-> open-source (AGPL-3.0); to ship a fully open font, build a variant on an OFL
-> base like Inter: see [Build a font](#build-your-own-font).
+> proprietary typeface © [Playtype](https://playtype.com), used with Playtype's
+> permission (see [`NOTICE`](./NOTICE)). That permission covers using Optik
+> whether or not the word substitutions are active — which is what allows
+> `<NonShield>` to render ordinary, unprotected text in the same face —
+> provided the use stays within the ShieldFont packages and tooling. They are **not** open-source and **not** under the SIL Open Font
+> License: the permission covers the Optik-derived variants distributed with
+> ShieldFont, not the original outlines, and does not extend to extracting or
+> redistributing those outlines or using them as a general-purpose typeface
+> elsewhere. The **code** is open-source (AGPL-3.0); to ship a fully open font,
+> build a variant on an OFL base like Inter: see
+> [Build a font](#build-your-own-font).
 
 ---
 
@@ -195,10 +260,13 @@ four tiers in detail.
 
 > [!IMPORTANT]
 > **One rule decides whether any of this works: your original text must never
-> reach the browser.** That means the encoding has to run in Node — in your
-> build or during server render — and *not* in a component that ships to the
-> client. Get this wrong and the page still looks protected while your
-> plaintext sits in the JS bundle. We built five real apps and grepped the
+> reach the browser in readable form.** That means the encoding has to run in
+> Node — in your build or during server render — and *not* in a component that
+> ships to the client. Get this wrong and the page still looks protected while
+> your plaintext sits in the JS bundle. (The accessible path is not an exception
+> to this rule: with `screenReader` on — the default — your real words *do* ship
+> inside the page, but **encrypted**, behind a time-lock puzzle a reader's
+> browser has to grind out. Nothing readable is served.) We built five real apps and grepped the
 > output; the results are in
 > **[Where the encoding happens](./docs/where-encoding-happens.md)**. Read it
 > before you ship, not after.
@@ -220,6 +288,64 @@ import { Shield } from "@shieldfont/react";
 
 `@font-face`, encoding, and the font-load guard all happen automatically.
 Anything outside `<Shield>` uses your normal page fonts.
+
+**That bare `<Shield>` draws something on screen.** Three independent props are
+on by default, and there is no combined "tier" or "level" that bundles them:
+`screenReader` seals your real words into the page behind the time-lock puzzle
+and renders the control that opens them; `wrapper` draws the visible furniture
+around the block — an outline, one plain-English sentence, and a Copy and an
+Uncover button (never on an inline tag like `as="span"`); `copyPaste` puts a
+short notice on the clipboard instead of silent decoy words. `wrapper` and
+`copyPaste` follow `screenReader`, so they are on wherever there is a seal to
+open, and each is one prop away from off:
+
+```jsx
+<Shield wrapper={false}>{body}</Shield>       // same control, clipped off-screen
+<Shield screenReader={false}>{body}</Shield>  // no seal, no alternative at all
+```
+
+Style the furniture with `wrapper={{ className }}`; the component-level
+`className` lands on the block itself and on the revealed words, not on the box.
+The prop was called `explain` in 0.3.0 and 0.3.1 and **passing `explain` now
+throws**, naming `wrapper` — the value is unchanged, so the fix is the key. Full
+reference, including what each switch costs:
+[`docs/plain-text-mode.md`](docs/plain-text-mode.md).
+
+**Want the rest of the page in the same typeface?** `<NonShield>` renders
+ordinary, unprotected text in Optik — no encoding, no decoys, no `aria-hidden`,
+no puzzle. Headings, decks, captions and nav stay real, indexable and readable,
+which is what makes the "never shield a heading" rule liveable instead of a
+design compromise:
+
+```jsx
+import { Shield, NonShield } from "@shieldfont/react";
+
+<NonShield as="h2">The future of writing</NonShield>
+<Shield as="p" variant="alpha">{body}</Shield>
+```
+
+> [!WARNING]
+> **Do not reach for `font-family: Optik` instead — it renders the decoy.** The
+> shipped `optik-*.woff2` files are not plain Optik; they are *shielded* builds
+> whose substitution lookups are wired into the OpenType `ccmp` feature (on by
+> default, and not reachable through `font-variant-ligatures: none`), and the
+> dictionary is an involution, so the font swaps a word whether it is the
+> original or the decoy. Shaped through the shipped `optik-a.woff2` with
+> HarfBuzz, `"Read the docs"` draws as composites built from the letters
+> `"Reset"` and `"sellers"`. Nothing errors: the page renders and the heading
+> just says the wrong thing. `<NonShield>` sets `font-feature-settings:
+> "ccmp" 0` to switch the substitutions off, and `<Shield>` re-asserts
+> `font-feature-settings: normal` on its own element so a shield nested inside a
+> `<NonShield>` cannot inherit the disabling and publish readable decoys.
+
+Two limits worth knowing up front: `variant` picks only which font file is
+fetched (with substitutions off, all four faces draw identical outlines) and
+does **not** auto-rotate; and `<NonShield>` emits no font-load guard, so a
+missing font leaves it rendering the correct words in a fallback face rather
+than blanking them. Full reference:
+[the integration guide](./docs/integration.md#nonshield-unprotected-text-in-the-same-typeface).
+It is React-only — on the CDN and Word tiers you write
+`font-feature-settings: "ccmp" 0` beside your own `font-family` rule.
 
 > [!WARNING]
 > **`<Shield>` cannot protect a client-only React app — Vite, Create React App,
@@ -257,7 +383,7 @@ interpolated: there is no variable font, and no italics ship.
 **Blogs / plain HTML / a CMS you don't build**: one CSS line, then a class:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.0/shieldfont.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">
 <p class="tk9">…encoded text from the encoder…</p>
 ```
 
@@ -296,31 +422,44 @@ for Word and PDF. If you need a real bold inside protected text, use
 >   load web fonts, so subscribers would read the decoy). Full list and a
 >   one-line check:
 >   [the plaintext side doors](docs/integration.md#the-plaintext-side-doors-close-these-or-the-rest-is-theatre).
-> - **Copy-paste** yields the encoded form, not the original.
-> - **Ctrl-F** finds nothing inside protected text: find-in-page searches the
->   DOM, so a reader searching for a phrase they can see gets no result.
-> - **Screen readers** skip protected regions (they're removed from the
->   accessibility tree), so nobody hears a decoy read aloud. `<Shield>` sets
->   `aria-hidden="true"` with no opt-out and pairs it with the **`a11y` prop**,
->   which renders a real alternative outside the hidden region and before it in
->   DOM order. `a11y={{ mode: "text" }}` ships your real words **encrypted into
->   the page** behind a time-lock puzzle the reader's browser grinds out on
->   request (default budget 20 seconds of their CPU, 7.6 s measured in Chrome;
->   nothing to host). The control is **screen-reader-only by default**: nothing
->   appears on screen, the unlocked words go to assistive technology clipped
->   off-screen, and the encoded block is left exactly as it was.
->   `a11y={{ mode: "audio", src }}` points at a build-time recording you make. No
->   mode ever renders a link to a plain-text copy — a URL in the HTML is a
->   one-line bypass for any scraper that follows it. **Two costs to know up
->   front:** it is the one part of ShieldFont that needs JavaScript, and because
->   the control is invisible, a sighted keyboard user with no screen reader Tabs
->   into something they cannot see and loses their focus indicator (WCAG 2.2 SC
->   2.4.7 — `visualHidden: false` puts the control back on screen). Difficulty is
+> - **Everything a human reader loses** is in one list:
+>   [what protecting a block breaks](docs/integration.md#what-protecting-a-block-breaks).
+>   Copy-paste, find-in-page, browser translation, Reader Mode, feeds, forced
+>   fonts, and the decoy that hover or touch exploration can still reach. Read it
+>   once, in full, before you decide what to wrap.
+> - **Forced fonts are the silent one.** When a browser overrides the page's
+>   fonts — Firefox with *"Allow pages to choose their own fonts"* off, a
+>   dyslexia-friendly font extension, some high-contrast setups — the decoy
+>   renders in the forced font and the reader gets fluent, grammatical, wrong
+>   English with **no signal at all**. The font-load guard cannot catch it: the
+>   font loaded fine, and `getComputedStyle` still reports the family you asked
+>   for. The visible wrapper — the outline, the sentence and the on-screen
+>   Copy/Uncover buttons that `<Shield>` draws by default (`wrapper`) — is the
+>   only thing that currently reaches that reader, which is why it is on unless
+>   you pass `wrapper={false}`.
+> - **Screen readers** are not read the decoy in normal linear or heading
+>   navigation: `<Shield>` sets `aria-hidden="true"` with no opt-out, so a
+>   listener reading the page top to bottom gets silence rather than a fluent
+>   wrong paragraph. Not the same as unreachable — NVDA's mouse-tracking and
+>   screen-review modes, and touch exploration on iOS and Android, read the DOM
+>   by position and **can** surface decoy words. What ships beside the hidden
+>   block is the accessible path: your real words **encrypted into the page**
+>   behind a time-lock puzzle the reader's browser grinds out on request (default
+>   budget 14 seconds of their CPU, about 2.5 s measured in Chrome; nothing to host).
+>   Never a link to a plain-text copy — a URL in the HTML is a one-line bypass
+>   for any scraper that follows it. **Two costs to know up front:** it is the one
+>   part of ShieldFont that needs JavaScript, and under `wrapper={false}` the
+>   control is clipped off-screen, so a sighted keyboard user Tabs into something
+>   they cannot see and loses their focus indicator (WCAG 2.2 SC 2.4.7) — the
+>   drawn wrapper, which is the default, puts a real visible control back.
+>   Difficulty is
 >   capped by what OCR would cost a crawler anyway, so raising `seconds` buys
->   nothing. Verified with real VoiceOver on macOS; **NVDA and JAWS are not.**
+>   nothing. Verified with real VoiceOver on macOS by hand and with real NVDA in
+>   CI on every commit; **JAWS is not.**
 >   Full reference: [`docs/plain-text-mode.md`](docs/plain-text-mode.md). Outside
 >   React (CDN paste-in, `@shieldfont/core`), set `aria-hidden` and supply the
->   alternative yourself.
+>   alternative yourself. **None of this is conformance** — see
+>   [the warning at the top](#-read-this-first-shieldfont-breaks-accessibility).
 > - **JS off + font 404:** the fail-loud font guard is JavaScript; with JS
 >   disabled and the font missing, a human sees the raw decoy text.
 
@@ -450,7 +589,7 @@ on the roadmap. **If you find a new attack, please** see
 
 See [**ROADMAP.md**](./ROADMAP.md) for the full list. Near-term priorities:
 
-- **Accessibility layer**: `<Shield>` hides protected regions from assistive tech and ships an `a11y` prop that renders a real alternative beside them — `mode: "text"` puts your words in the page encrypted behind a time-lock puzzle the reader's browser opens (no link for a scraper to follow, no artifact for you to host), or `mode: "audio"` points at a recording you make. What remains: NVDA and JAWS verification (VoiceOver is done by hand, Windows is not), the focus indicator a sighted keyboard user loses to an invisible control, and the non-React tiers shipping none of it.
+- **Accessibility layer**: `<Shield>` hides protected regions from assistive tech and ships a real alternative beside them — `screenReader` (spelled `a11y={{ mode: "text" }}` in older code) puts your words in the page encrypted behind a time-lock puzzle the reader's browser opens (no link for a scraper to follow, no artifact for you to host), and `wrapper` draws it on screen. None of it is conformance, and none of it is planned to become conformance — see [the warning](#-read-this-first-shieldfont-breaks-accessibility). What remains: JAWS verification (VoiceOver is done by hand, NVDA runs in CI, JAWS is untouched), the focus indicator a sighted keyboard user still loses under `wrapper={false}`, where the control is clipped off-screen, a published test page and human-reviewed screen-reader recording, and the non-React tiers shipping none of it.
 - **Threat-model document**: honest evaluation with numbers against real scraper pipelines.
 - **Multilingual mappings**: the cross-language `M15-MULTI` template exists; PT/ES/FR/DE/IT are next, each with native linguist curation.
 - **Per-deploy rotation**: per-site seeds and time windows to defeat *dictionary reuse* at scale. (Font inversion is unaffected by any seed, and a new seed needs a newly built font, so this is a cost-raising measure, not a fix.)
@@ -525,7 +664,7 @@ Supported by [**Playtype**](https://playtype.com).
 ```
 packages/
   core/    @shieldfont/core — encode/decode + HTML helpers, bundled mappings
-  react/   @shieldfont/react — <Shield> server component (version-neutral fonts, six weights per variant)
+  react/   @shieldfont/react — <Shield> server component + <NonShield> (version-neutral fonts, six weights per variant)
   font/    @shieldfont/font — no-build CDN font + shieldfont.css (Regular 400 only)
   core/src/mappings/{alpha,beta,gamma,m15en}.json   the shipped mappings
 
@@ -554,7 +693,8 @@ CHANGELOG.md · ROADMAP.md · LICENSE (AGPL-3.0) · LICENSE-FONTS · NOTICE
 - **Generated fonts**: [SIL Open Font License 1.1](./LICENSE-FONTS) when built
   from the OFL base fonts, which keep their original terms.
 - **ShieldFont Optik**, the shipped default, uses **Optik © [Playtype](https://playtype.com)**
-  in ShieldFont's replaced-glyph form only: **not** under OFL. See [NOTICE](./NOTICE).
+  with Playtype's permission — with or without the substitutions active, within
+  the ShieldFont packages and tooling: **not** under OFL. See [NOTICE](./NOTICE).
 
 <br />
 
