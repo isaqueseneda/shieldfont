@@ -100,6 +100,14 @@
  *   the reader's device. Only HTMLElement.click()'s in-progress flag stopped it
  *   recursing further, and a .click()-driven test cannot see it at all — it
  *   needs a real pointer event.
+ * - THE BROADCAST TO THE DRAWN TIER IS MARKED, not a bare .click(). It was
+ *   bare, and notice.ts's document handler could not tell a synthetic press
+ *   from a reader's — so it treated every broadcast as owned and moved focus.
+ *   On a page carrying both tiers, pressing the clipped control landed the
+ *   reader inside a DIFFERENT block's revealed text a few seconds later, with
+ *   the virtual cursor moved out from under them. The fix this file already
+ *   applied to its own peers (`ev.__all`) simply never crossed the tier
+ *   boundary. Falls back to .click() where MouseEvent construction fails.
  * - ONLY THE BLOCK THE READER PRESSED TAKES FOCUS. Every block finishes at its
  *   own time and each one used to call out.focus() unconditionally, so a
  *   three-block page yanked the reader's place three times and left them on
@@ -235,7 +243,7 @@ function open(hex, data, hexLen){
     .then(function(k){
       return window.crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(data.iv) }, k, fromB64(data.ct));
     })
-    .then(function(buf){ return new TextDecoder().decode(buf); });
+    .then(function(buf){ return new TextDecoder().decode(buf).replace(/\\u0000+$/, ''); });
 }
 function pick(list, key){
   var h = 5381, i;
@@ -302,7 +310,8 @@ function wire(btn){
         var db = drawn[di];
         if (db === btn || db.hasAttribute(SOLVE)) continue;
         if (db.hidden || db.getAttribute('aria-disabled') === 'true') continue;
-        try { db.click(); } catch (e) {}
+        try { var e3 = new MouseEvent('click', {bubbles: true}); e3.__all = 1; db.dispatchEvent(e3); }
+        catch (e) { try { db.click(); } catch (e2) {} }
       }
     }
     show(bar);

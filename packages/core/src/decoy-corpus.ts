@@ -66,9 +66,14 @@ export const DECOY_CORPUS: readonly string[] = corpus as string[];
 /**
  * Pick `count` paragraphs, deterministically, from a seed.
  *
- * Deterministic because builds must be reproducible: the same commit and the
- * same site hash have to produce the same bytes, or CI caching breaks and two
- * builds of one commit stop being comparable.
+ * Deterministic, so a given seed always selects the same paragraphs.
+ *
+ * That is NOT the same as a reproducible build, and an earlier version of this
+ * comment claimed it was — while decoys.ts, in the same commit, correctly said
+ * the opposite. `sealText` mints fresh primes and a fresh IV on every call, so
+ * two builds of one commit never produce identical bytes and never could. What
+ * is stable here is the SELECTION: the same seed draws the same paragraphs, so
+ * a block's decoys do not churn between renders.
  *
  * Seeded from the SITE rather than fixed, so two projects using this library
  * never ship identical decoys — otherwise one afternoon's work would produce a
@@ -85,6 +90,16 @@ export function decoyParagraphs(seed: string, count: number): string[] {
     h ^= seed.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
+  // ZERO IS A FIXED POINT of the xorshift below — 0 ^ (0<<13) ^ (0>>>17) ^
+  // (0<<5) is 0 — so a seed hashing to it makes the loop pick index 0 forever
+  // and never terminate. Synchronous, so nothing can interrupt it: the author's
+  // build hangs with no error and no way to guess why.
+  //
+  // One project in 2^32, and reachable through the documented API:
+  // setCamouflage({ hash: "8pu9abvy" }) is one such seed. sealText already rules
+  // out its own astronomically-unlikely degenerate case (p === q) on exactly
+  // this reasoning; this is the same class and deserves the same line.
+  if (h === 0) h = 1;
   const out: string[] = [];
   const used = new Set<number>();
   // Distinct paragraphs: two identical decoys on one block would tell an

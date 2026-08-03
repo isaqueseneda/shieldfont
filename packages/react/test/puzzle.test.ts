@@ -139,7 +139,22 @@ describe("the plaintext does not ship", () => {
     // grind them natively, no browser, no button.
     const holder = byAttr(Shield({ children: BODY, ...INVISIBLE }), "data-typeface-data");
     const json = (props(holder!).dangerouslySetInnerHTML as { __html: string }).__html;
-    const texts = (JSON.parse(json) as SealedText[]).map((p) => solveText(p));
+    const payloads = JSON.parse(json) as SealedText[];
+
+    // EVERY CIPHERTEXT IS THE SAME LENGTH. Without this the set gives itself
+    // away for free: AES-GCM ciphertext is plaintext length plus a tag, the
+    // decoy corpus is clamped to 220-900 characters, and anything outside that
+    // band is the odd one out on sight — no CPU, no browser, HTML alone.
+    //
+    // Asserted on the CIPHERTEXT, not on the decrypted string. The padding
+    // equalises BYTES, because that is what AES encrypts and therefore what
+    // leaks; the decrypted character counts still differ by a few, since Austen
+    // is full of curly quotes and em-dashes that cost more than one byte each.
+    // An earlier version of this checked characters, passed, and left the real
+    // leak in place.
+    expect(new Set(payloads.map((p) => p.ct.length)).size).toBe(1);
+
+    const texts = payloads.map((p) => solveText(p).replace(/\u0000+$/, ""));
 
     // Exactly one is the reader's words. Zero would mean the block is broken;
     // more than one would mean a decoy is carrying real text.

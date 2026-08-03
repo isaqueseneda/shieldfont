@@ -820,7 +820,7 @@ function open(hex, d, len){
   return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(c))
     .then(function(k){ return window.crypto.subtle.importKey('raw', k, 'AES-GCM', false, ['decrypt']); })
     .then(function(k){ return window.crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(d.iv) }, k, fromB64(d.ct)); })
-    .then(function(b){ return new TextDecoder().decode(b); });
+    .then(function(b){ return new TextDecoder().decode(b).replace(/\\u0000+$/, ''); });
 }
 function task(d, onEst, onProg){
   return new Promise(function(res, rej){
@@ -1077,10 +1077,11 @@ document.addEventListener('click', function(ev){
     for (var i = 0; i < frames.length; i++){
       if (frames[i].root === root){
         var k = btn.getAttribute(A + '-act');
+        var own = !ev.__all;
         if (k === 'copy' && frames[i].state === 'open') frames[i].copy(btn);
-        else if (k === 'copy') frames[i].run('copy', here, true);
+        else if (k === 'copy') frames[i].run('copy', here, own);
         else {
-          frames[i].run('show', here, true);
+          frames[i].run('show', here, own);
           all(frames[i]);
         }
         return;

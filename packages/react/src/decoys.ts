@@ -61,6 +61,50 @@ import type { Mapping } from "@shieldfont/core";
  */
 export const DECOY_COUNT = 3;
 
+/**
+ * Plaintexts are padded to a multiple of this before sealing.
+ *
+ * WITHOUT IT THE WHOLE MECHANISM IS DECORATION, and the first version shipped
+ * without it. AES-GCM ciphertext is plaintext length plus a 16-byte tag, so an
+ * unpadded set of four leaks its own answer: the decoys come from a corpus
+ * clamped to 220-900 characters, and anything outside that band — a heading, a
+ * pull quote — is the odd one out on sight. Worse, the decoys used to be seeded
+ * per SITE, so the same three paragraphs rode along on every block and their
+ * three lengths were a site-wide constant. Learn the triple from any few
+ * blocks; the length that does not recur is the reader's words. Zero CPU, HTML
+ * only, no browser. Measured: 8 blocks out of 8.
+ *
+ * Padding to a shared bucket makes every payload in a set the same size. The
+ * bucket still discloses roughly how long the block is, which is not a secret —
+ * the decoy text is sitting right there in the markup — but it discloses it
+ * about all four equally, which is the only property that matters here.
+ */
+const PAD_BUCKET = 256;
+
+/**
+ * BYTES, not characters — and the difference is the whole point.
+ *
+ * AES-GCM encrypts the UTF-8 encoding, so what leaks through ciphertext length
+ * is the byte count. Padding to a common CHARACTER count leaves two payloads
+ * different sizes the moment one of them contains a curly quote or an em-dash,
+ * which Austen is full of. The first version of this did exactly that and the
+ * set still gave itself away; a test caught it.
+ */
+function byteLen(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/**
+ * Padded with NULs, which cannot occur in the source text: `<Shield>` rejects
+ * non-string children and the encoder emits words and punctuation. NUL is one
+ * byte in UTF-8, so character count and byte count move together here even
+ * though they do not in the text being padded. Both emitted scripts strip a NUL
+ * run from the end after decrypting.
+ */
+function pad(text: string, toBytes: number): string {
+  return text + "\u0000".repeat(Math.max(0, toBytes - byteLen(text)));
+}
+
 export interface SealedSet {
   /** Every payload, shuffled. The real one is at {@link index}. */
   payloads: SealedText[];
@@ -95,7 +139,22 @@ export function sealWithDecoys(
   seed: string,
   blockKey: string,
 ): SealedSet {
-  const filler = decoyParagraphs(seed, DECOY_COUNT);
+  // SEEDED PER BLOCK, not per site. It was per site — one value for the whole
+  // project — so every block drew the SAME three paragraphs and the decoy
+  // lengths became a site-wide constant an attacker could learn once and apply
+  // everywhere. It also meant that solving one block's four payloads handed
+  // over the decoy list for the entire site, so the advertised 4x was paid
+  // exactly once and the marginal cost on every later block was 1x.
+  //
+  // The site seed still mixes in, which is what stops two projects drawing the
+  // same decoys — that was the original and correct reason for seeding at all.
+  const filler = decoyParagraphs(seed + "\u0000" + blockKey, DECOY_COUNT);
+  const encoded = filler.map((text) => encode(text, mapping));
+
+  // One length for the whole set, so ciphertext size discloses nothing about
+  // which payload is which.
+  const longest = Math.max(byteLen(plain), ...encoded.map(byteLen));
+  const width = Math.ceil((longest + 1) / PAD_BUCKET) * PAD_BUCKET;
   const payloads: SealedText[] = [];
 
   // The real one first, then the decoys, then rotate. Rotating rather than
@@ -103,13 +162,13 @@ export function sealWithDecoys(
   // the browser is given — a shuffle would need a permutation table in the
   // markup, which is both bigger and a louder signal that something is being
   // hidden.
-  payloads.push(sealText(plain, { seconds }));
-  for (const text of filler) {
-    // encode(), always. Raw corpus prose is one search away from being
+  payloads.push(sealText(pad(plain, width), { seconds }));
+  for (const text of encoded) {
+    // Already encode()d above. Raw corpus prose is one search away from being
     // identified as filler; encoded, it is indistinguishable from the block
     // beside it. If the corpus runs dry the block simply gets fewer decoys —
     // never a plaintext one.
-    payloads.push(sealText(encode(text, mapping), { seconds }));
+    payloads.push(sealText(pad(text, width), { seconds }));
   }
 
   const index = indexFor(blockKey, payloads.length);
