@@ -54,6 +54,19 @@ export {
   // guard per page instead of one per <Shield>.
   withShieldRenderPass,
 } from "./Shield.js";
+// <NonShield> — the same Optik face with NONE of the protection: children are
+// rendered verbatim, readable by screen readers, search engines, translators
+// and copy-paste. It exists so a ShieldFont page can be in one typeface
+// throughout (headings, captions, nav, intros) instead of shielded paragraphs
+// in Optik and everything else in a fallback, and it is the supported way to
+// follow this project's own rule that headings must not be shielded.
+//
+// It is NOT a thin wrapper over a font-family rule, and must not be
+// reimplemented as one: the shipped faces substitute words unless the `ccmp`
+// feature is explicitly disabled, so plain text through a shielded face
+// renders the DECOY. See the header of NonShield.tsx.
+export { NonShield } from "./NonShield.js";
+export type { NonShieldProps } from "./NonShield.js";
 export type {
   ShieldProps,
   ShieldVariant,
