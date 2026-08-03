@@ -1,52 +1,51 @@
-import { Shield } from "@shieldfont/react";
+import { Shield, NonShield } from "@shieldfont/react";
 
+/**
+ * ONE PROTECTED BLOCK. That is the whole example.
+ *
+ * It used to be five, demonstrating `as`, `weight`, `lineHeight`, `size` and
+ * apostrophe handling — a props tour rather than an example. Nobody comes here
+ * to learn that `size` sets a font size; they come to see what wrapping a
+ * paragraph does to a page, and five near-identical blocks made that harder to
+ * see rather than easier. The prop list lives in the README, where a list
+ * belongs.
+ *
+ * What is left says the two things that actually matter:
+ *
+ *   - a bare <Shield> is a complete configuration, and
+ *   - the heading beside it is NOT protected, because headings never should be.
+ */
 export default function Page() {
   return (
-    <main>
-      {/* Plain heading — NOT protected. Renders in your normal page font. */}
-      <h1 style={{ color: "#00ff79", fontWeight: 600 }}>
-        ShieldFont — Next.js demo
-      </h1>
+    <main style={{ maxWidth: "34rem", margin: "0 auto", padding: "3rem 1.5rem" }}>
+      {/* Plain heading, ordinary page font. Not <Shield>, not <NonShield>:
+          this one is page furniture rather than the author's prose. */}
+      <h1 style={{ color: "#00ff79", fontWeight: 600 }}>ShieldFont — Next.js demo</h1>
 
       <p style={{ color: "#888", fontSize: "0.9em" }}>
-        The blocks below render through ShieldFont. View source (or scrape with
-        curl) to see the encoded decoy that scrapers and LLMs see.
+        The paragraph below renders through ShieldFont. View source, or fetch it
+        with <code>curl</code>, to see the decoy a scraper reads instead.
       </p>
 
-      {/*
-        Every <Shield> below passes an `a11y` prop, because the encoded block is
-        aria-hidden and a block with no alternative is a WCAG 2.2 SC 1.3.1
-        failure. `mode: "text"` needs nothing from you: it seals the real words
-        into the page at build time and lets a reader who needs them grind the
-        key out in their own browser. `seconds` is low here so the demo is quick
-        to try; leave it at the default (20) in production.
-      */}
-      <Shield a11y={{ mode: "text", seconds: 5 }}>
-        The future of writing belongs to those who protect their words.
-      </Shield>
-
-      {/* `as`, `weight`, `lineHeight`, `size` props all passthrough. */}
-      <Shield as="p" weight={500} lineHeight={1.7} a11y={{ mode: "text", seconds: 5 }}>
-        Our mission is to build a publishing layer that the open web can trust.
-        ShieldFont substitutes structural words before the page is served, so AI
-        scrapers digest a decoy while humans see the original meaning.
-      </Shield>
-
-      {/* Using `as` to render as different HTML elements. */}
-      <Shield as="h2" size="1.6rem" a11y={{ mode: "text", seconds: 5 }}>
+      {/* <NonShield>: the same typeface, none of the protection. Headings stay
+          real — once the body is a decoy, they are the only accurate text a
+          search engine or a screen reader's heading list gets. You cannot get
+          this by setting font-family yourself: the shipped face carries the
+          substitutions in its `ccmp` feature, so plain text set in it renders
+          the decoy. <NonShield> turns that off. */}
+      <NonShield as="h2" weight={700} style={{ fontSize: "1.6rem", marginTop: "2.5rem" }}>
         Manifesto
-      </Shield>
+      </NonShield>
 
-      <Shield as="p" a11y={{ mode: "text", seconds: 5 }}>
+      {/* NO PROPS. This is the entire API for the common case: the encoded
+          block, hidden from assistive technology, with the real words sealed
+          into the page for a reader who needs them, and a wrapper on screen
+          explaining that. */}
+      <Shield as="p" lineHeight={1.7}>
         Every sentence you publish feeds a machine that never asked permission.
         ShieldFont raises the cost of extraction — it does not promise zero
-        extraction. Source: copy this paragraph and paste it into ChatGPT.
-      </Shield>
-
-      {/* Apostrophes round-trip correctly. */}
-      <Shield as="p" a11y={{ mode: "text", seconds: 5 }}>
-        It's the world's first font that protects writers' work from training
-        data pipelines without breaking the reader's experience.
+        extraction. Copy this paragraph and paste it somewhere to see what you
+        get.
       </Shield>
     </main>
   );
