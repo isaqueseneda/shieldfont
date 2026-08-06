@@ -78,21 +78,62 @@ from shape_run import (  # noqa: E402
     ShapeRunner,
     font_bytes,
 )
+from mapping_contract import (  # noqa: E402
+    MappingContractError,
+    derive_bundle_id,
+    flatten_contract,
+    load_contract,
+)
+from artifact_contract import (  # noqa: E402
+    deterministic_font_metadata,
+    emit_canonical_artifacts,
+    scan_public_artifacts,
+    source_date_epoch,
+)
 DEFAULT_MAPPING_PATH = SCRIPT_DIR / "word_mapping.json"
 MAPPING_PATH = DEFAULT_MAPPING_PATH  # may be overridden in main()
+MAPPING_CONTRACT = None
+MAPPING_CASE_FORM = "preserve"
+MAPPING_NONCE_OVERRIDE = None
+MAPPING_BUNDLE_ID = None
 FONT_CACHE_DIR = SCRIPT_DIR / "fonts"
 OUTPUT_DIR = PROJECT_DIR / "public" / "fonts"
 
 
+def build_bundle_identity(mapping, font_bytes_or_digest, *, nonce=None,
+                          tenant=None, compatibility=None):
+    """Return an opaque identity for a complete, compatibility-bound build."""
+    return derive_bundle_id(
+        mapping=mapping,
+        font=font_bytes_or_digest,
+        nonce=nonce,
+        tenant=tenant,
+        compatibility=compatibility or {},
+    )
+
+
+def derive_cache_key(url, cache_name, *, compatibility=None):
+    """Return a collision-resistant, opaque base-font cache identity."""
+    return derive_bundle_id(
+        font={"url_digest": _safe_text_id(url), "cache_name_digest": _safe_text_id(cache_name)},
+        compatibility=compatibility or {},
+    )
+
+
 def download_font(url, cache_name):
     """Download a font from Google Fonts zip or direct URL."""
-    cache_path = FONT_CACHE_DIR / cache_name
+    cache_key = derive_cache_key(url, cache_name)
+    cache_path = FONT_CACHE_DIR / f"{cache_key}-{Path(cache_name).name}"
+    legacy_cache_path = FONT_CACHE_DIR / cache_name
     if cache_path.exists():
-        print(f"[OK] Font already cached at {cache_path}")
+        print(f"[OK] Font cache: cache_status=hit key={cache_key}")
         return cache_path
+    if legacy_cache_path.exists():
+        print(f"[OK] Font cache: cache_status=hit key={cache_key} legacy=1")
+        return legacy_cache_path
 
     FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"[..] Downloading from {url}")
+    print(f"[..] Font cache: cache_status=miss key={cache_key}")
 
     resp = requests.get(url, timeout=60, allow_redirects=True)
     if resp.status_code != 200:
@@ -132,13 +173,46 @@ def download_font(url, cache_name):
 
 
 def load_mapping():
-    with open(MAPPING_PATH, "r", encoding="utf-8") as f:
-        mapping = json.load(f)
-    # tolerate a `_meta` provenance block (and any `_`-prefixed metadata) in the
-    # input — strip it so it is never treated as a word pair.
-    mapping = {k: v for k, v in mapping.items() if not k.startswith("_")}
+    global MAPPING_CONTRACT, MAPPING_CASE_FORM
+    contract = load_contract(MAPPING_PATH, nonce_override=MAPPING_NONCE_OVERRIDE)
+    mapping, contract = flatten_contract(contract)
+    MAPPING_CONTRACT = contract
+    MAPPING_CASE_FORM = contract.get("case", "preserve")
+    details = contract.get("diagnostics", {})
+    if details:
+        print(
+            f"[OK] Mapping contract: schema={details.get('schema')} "
+            f"profile={details.get('profile')} groups={details.get('group_count')} "
+            f"seed_id_digest={_safe_text_id(details.get('seed_id', ''))} "
+            f"nonce_source={details.get('nonce_source')} "
+            f"nonce_digest_prefix={details.get('nonce_digest_prefix') or 'none'} "
+            f"case={MAPPING_CASE_FORM} "
+            f"alias_cardinality_histogram={details.get('alias_cardinality_histogram', {})} "
+            f"case_counts={details.get('case_counts', {})} "
+            f"fallback_decisions={details.get('fallback_decisions', {})}"
+        )
     print(f"[OK] Loaded {len(mapping)} word mappings")
     return mapping
+
+
+def mapping_output_payload(mapping):
+    """Return the flat encoder mapping with safe v2 provenance when applicable."""
+    if not isinstance(MAPPING_CONTRACT, dict) or MAPPING_CONTRACT.get("legacy"):
+        return mapping
+    details = MAPPING_CONTRACT.get("diagnostics", {})
+    meta = {
+        "schema": details.get("schema"),
+        "profile": details.get("profile"),
+        "groups": details.get("group_count"),
+        "seedId": details.get("seed_id"),
+        "nonceSource": details.get("nonce_source"),
+        "nonceDigestPrefix": details.get("nonce_digest_prefix"),
+        "case": MAPPING_CONTRACT.get("case", "preserve"),
+        "aliasCardinalityHistogram": details.get("alias_cardinality_histogram", {}),
+    }
+    if MAPPING_BUNDLE_ID:
+        meta["bundleId"] = MAPPING_BUNDLE_ID
+    return {"_meta": meta, **mapping}
 
 
 def _safe_text_id(value):
@@ -1058,6 +1132,88 @@ def activate_feature_for_script_langsys(
     }
 
 
+def estimate_chain_context_size(
+    backtrack_glyphs: int,
+    input_glyphs: int,
+    lookahead_glyphs: int,
+    *,
+    format: int = 3,
+) -> int:
+    """Estimate a single boundary rule without serializing private mapping data."""
+    if format == 2:
+        # Header/class definitions plus one class rule. Class 0 is implicit.
+        return 24 + 6 * 3 + 2 * 3
+    if format != 3:
+        raise ValueError("ChainContext format must be 2 or 3")
+    return 24 + 2 * (backtrack_glyphs + input_glyphs + lookahead_glyphs)
+
+
+def _class_def(glyphs, glyph_ids, class_id=1):
+    """Build a deterministic non-overlapping OpenType class definition."""
+    values = {}
+    for glyph in sorted(set(glyphs), key=glyph_ids.__getitem__):
+        if glyph in values:
+            raise ValueError("class coverage overlap")
+        values[glyph] = class_id
+    return values
+
+
+def validate_class_partition(class_groups, glyph_ids):
+    """Validate disjoint, GID-ordered classes for GSUB Format 2."""
+    seen = set()
+    for class_id, glyphs in sorted(class_groups.items()):
+        ordered = sorted(glyphs, key=glyph_ids.__getitem__)
+        if list(glyphs) != ordered:
+            raise ValueError(f"class {class_id} coverage is not glyph-ID ordered")
+        overlap = seen.intersection(glyphs)
+        if overlap:
+            raise ValueError(f"class coverage overlap in class {class_id}")
+        seen.update(glyphs)
+    return True
+
+
+def _build_chain_context_class_rule(
+    *,
+    backtrack_glyphs,
+    input_glyphs,
+    lookahead_glyphs,
+    glyph_ids,
+    restore_lookup_index,
+    direction,
+):
+    """Build one class-oriented ChainContext rule.
+
+    The first input class is represented by ChainSubClassSet index 1; all
+    remaining sequences are empty because boundary checks are one glyph wide.
+    """
+    table = otTables.ChainContextSubst()
+    table.Format = 2
+    table.BacktrackClassDef = otTables.ClassDef()
+    table.InputClassDef = otTables.ClassDef()
+    table.LookAheadClassDef = otTables.ClassDef()
+    table.BacktrackClassDef.classDefs = _class_def(
+        backtrack_glyphs, glyph_ids
+    ) if backtrack_glyphs else {}
+    table.InputClassDef.classDefs = _class_def(input_glyphs, glyph_ids)
+    table.LookAheadClassDef.classDefs = _class_def(
+        lookahead_glyphs, glyph_ids
+    ) if lookahead_glyphs else {}
+    table.ChainSubClassSet = [None, otTables.ChainSubClassSet()]
+    rule = otTables.ChainSubClassRule()
+    rule.Backtrack = [1] if backtrack_glyphs and direction == "before" else []
+    rule.Input = []
+    rule.LookAhead = [1] if lookahead_glyphs and direction == "after" else []
+    record = otTables.SubstLookupRecord()
+    record.SequenceIndex = 0
+    record.LookupListIndex = restore_lookup_index
+    rule.SubstLookupRecord = [record]
+    rule.SubstCount = 1
+    table.ChainSubClassSet[1].ChainSubClassRule = [rule]
+    table.ChainSubClassSet[1].ChainSubClassRuleCount = 1
+    table.ChainSubClassSetCount = 2
+    return table
+
+
 def build_gsub_word_boundary_ligatures(
     font,
     ligature_map,
@@ -1068,6 +1224,7 @@ def build_gsub_word_boundary_ligatures(
     feature_tag="ccmp",
     restoration_feature_tag=RESTORATION_FEATURE_TAG,
     optional_feature_tag=OPTIONAL_FEATURE_TAG,
+    optimization="auto",
 ):
     """Word-boundary ligatures via explicit feature-stage FIRE-THEN-REVERT.
 
@@ -1299,22 +1456,72 @@ def build_gsub_word_boundary_ligatures(
         letter_glyphs | word_substituted, key=glyph_ids.__getitem__
     )  # GID order — see above
 
+    format3_estimate = (
+        estimate_chain_context_size(
+            len(boundary_coverage), len(substituted_glyphs), 0, format=3
+        )
+        + estimate_chain_context_size(
+            0, len(substituted_glyphs), len(boundary_coverage), format=3
+        )
+    )
+    format2_estimate = (
+        estimate_chain_context_size(
+            len(boundary_coverage), len(substituted_glyphs), 0, format=2
+        )
+        + estimate_chain_context_size(
+            0, len(substituted_glyphs), len(boundary_coverage), format=2
+        )
+    )
+    class_candidate = optimization in {"auto", "format2"} and (
+        optimization == "format2" or format2_estimate < format3_estimate
+    )
+    # A class rule is only safe after a real shaping/collision oracle has
+    # accepted the serialized font. This low-level builder has no text oracle,
+    # so it deliberately keeps the proven Format 3 path until an orchestrator
+    # supplies one. The candidate and estimate remain visible for benchmarking.
+    use_class_rules = False
+    if class_candidate:
+        try:
+            _class_def(boundary_coverage, glyph_ids)
+            _class_def(substituted_glyphs, glyph_ids)
+        except (KeyError, ValueError):
+            class_candidate = False
+        if class_candidate:
+            print("[WARN] GSUB class optimization requires shaping validation; "
+                  "using deterministic Format 3 fallback")
+    print(
+        f"[OK] GSUB boundary optimization: format2_estimate={format2_estimate} "
+        f"format3_estimate={format3_estimate} "
+        f"selected={'class-Format2' if use_class_rules else 'Format3'}"
+    )
+
     # ---- Lookup D: ChainContext letter-BEFORE reverter ----
-    chain_d = otTables.ChainContextSubst()
-    chain_d.Format = 3
-    bt_cov = otTables.Coverage(); bt_cov.glyphs = boundary_coverage
-    chain_d.BacktrackCoverage = [bt_cov]
-    chain_d.BacktrackGlyphCount = 1
-    in_cov_d = otTables.Coverage(); in_cov_d.glyphs = substituted_glyphs
-    chain_d.InputCoverage = [in_cov_d]
-    chain_d.InputGlyphCount = 1
-    chain_d.LookAheadCoverage = []
-    chain_d.LookAheadGlyphCount = 0
-    rec_d = otTables.SubstLookupRecord()
-    rec_d.SequenceIndex = 0
-    rec_d.LookupListIndex = -1  # placeholder, set after appending
-    chain_d.SubstLookupRecord = [rec_d]
-    chain_d.SubstCount = 1
+    if use_class_rules:
+        chain_d = _build_chain_context_class_rule(
+            backtrack_glyphs=boundary_coverage,
+            input_glyphs=substituted_glyphs,
+            lookahead_glyphs=[],
+            glyph_ids=glyph_ids,
+            restore_lookup_index=-1,
+            direction="before",
+        )
+        rec_d = chain_d.ChainSubClassSet[1].ChainSubClassRule[0].SubstLookupRecord[0]
+    else:
+        chain_d = otTables.ChainContextSubst()
+        chain_d.Format = 3
+        bt_cov = otTables.Coverage(); bt_cov.glyphs = boundary_coverage
+        chain_d.BacktrackCoverage = [bt_cov]
+        chain_d.BacktrackGlyphCount = 1
+        in_cov_d = otTables.Coverage(); in_cov_d.glyphs = substituted_glyphs
+        chain_d.InputCoverage = [in_cov_d]
+        chain_d.InputGlyphCount = 1
+        chain_d.LookAheadCoverage = []
+        chain_d.LookAheadGlyphCount = 0
+        rec_d = otTables.SubstLookupRecord()
+        rec_d.SequenceIndex = 0
+        rec_d.LookupListIndex = -1  # placeholder, set after appending
+        chain_d.SubstLookupRecord = [rec_d]
+        chain_d.SubstCount = 1
     chain_d_lookup = otTables.Lookup()
     chain_d_lookup.LookupType = 6
     chain_d_lookup.LookupFlag = 0
@@ -1323,21 +1530,32 @@ def build_gsub_word_boundary_ligatures(
     _set_lookup_mark_filter(chain_d_lookup, mark_set_index)
 
     # ---- Lookup E: ChainContext letter-AFTER reverter ----
-    chain_e = otTables.ChainContextSubst()
-    chain_e.Format = 3
-    chain_e.BacktrackCoverage = []
-    chain_e.BacktrackGlyphCount = 0
-    in_cov_e = otTables.Coverage(); in_cov_e.glyphs = substituted_glyphs
-    chain_e.InputCoverage = [in_cov_e]
-    chain_e.InputGlyphCount = 1
-    la_cov = otTables.Coverage(); la_cov.glyphs = boundary_coverage
-    chain_e.LookAheadCoverage = [la_cov]
-    chain_e.LookAheadGlyphCount = 1
-    rec_e = otTables.SubstLookupRecord()
-    rec_e.SequenceIndex = 0
-    rec_e.LookupListIndex = -1  # placeholder
-    chain_e.SubstLookupRecord = [rec_e]
-    chain_e.SubstCount = 1
+    if use_class_rules:
+        chain_e = _build_chain_context_class_rule(
+            backtrack_glyphs=[],
+            input_glyphs=substituted_glyphs,
+            lookahead_glyphs=boundary_coverage,
+            glyph_ids=glyph_ids,
+            restore_lookup_index=-1,
+            direction="after",
+        )
+        rec_e = chain_e.ChainSubClassSet[1].ChainSubClassRule[0].SubstLookupRecord[0]
+    else:
+        chain_e = otTables.ChainContextSubst()
+        chain_e.Format = 3
+        chain_e.BacktrackCoverage = []
+        chain_e.BacktrackGlyphCount = 0
+        in_cov_e = otTables.Coverage(); in_cov_e.glyphs = substituted_glyphs
+        chain_e.InputCoverage = [in_cov_e]
+        chain_e.InputGlyphCount = 1
+        la_cov = otTables.Coverage(); la_cov.glyphs = boundary_coverage
+        chain_e.LookAheadCoverage = [la_cov]
+        chain_e.LookAheadGlyphCount = 1
+        rec_e = otTables.SubstLookupRecord()
+        rec_e.SequenceIndex = 0
+        rec_e.LookupListIndex = -1  # placeholder
+        chain_e.SubstLookupRecord = [rec_e]
+        chain_e.SubstCount = 1
     chain_e_lookup = otTables.Lookup()
     chain_e_lookup.LookupType = 6
     chain_e_lookup.LookupFlag = 0
@@ -1800,6 +2018,13 @@ def main():
                              "either clobber it (dropping its _meta block) or litter bogus "
                              "<variant>-<weight>.json files. Text mappings are weight-agnostic.")
     parser.add_argument("--mapping-path", help="Path to a custom word mapping JSON (default: scripts/word_mapping.json)")
+    parser.add_argument("--document-nonce", "--nonce",
+                        help="Private document nonce used for keyed alias selection; "
+                             "never written to diagnostics or mapping output")
+    parser.add_argument("--tenant-id",
+                        help="Opaque tenant input for bundle identity; never logged or used raw")
+    parser.add_argument("--cache-key",
+                        help="Optional opaque cache identity override; raw values are never logged")
     parser.add_argument("--mapping-out", help="Stem for the emitted encoder mapping JSON under "
                         "packages/core/src/mappings/ (default: prefix minus 'shieldfont-'). Use to "
                         "decouple the encoder mapping filename from the font basename, e.g. build "
@@ -1846,6 +2071,14 @@ def main():
                         help="Fail closed when the pinned shaping backend is unavailable")
     parser.add_argument("--deterministic", action="store_true",
                         help="Require the pinned shaping backend for reproducible output")
+    parser.add_argument("--gsub-optimization", choices=("auto", "format2", "format3"),
+                        default="auto",
+                        help="Evaluate class-oriented ChainContext Format 2; "
+                             "fall back deterministically to Format 3")
+    parser.add_argument("--artifact-dir",
+                        help="Emit canonical artifacts here (default: public/fonts)")
+    parser.add_argument("--source-date-epoch", type=int,
+                        help="Controlled timestamp for reproducible font metadata")
     add_json_result_argument(parser)
     args = parser.parse_args()
     diag = Diagnostics(__file__, args.json_out)
@@ -1894,6 +2127,8 @@ def main():
     if args.mapping_path:
         global MAPPING_PATH
         MAPPING_PATH = Path(args.mapping_path)
+    global MAPPING_NONCE_OVERRIDE
+    MAPPING_NONCE_OVERRIDE = args.document_nonce
 
     print("=" * 60)
     print(f"ShieldFont Variant Generator: {args.name or '(name auto-derived from base font)'}")
@@ -1917,6 +2152,10 @@ def main():
     # family name (and prefix) when the user didn't pass --name/--prefix.
     print(f"[..] Loading font from {font_path}")
     font = TTFont(str(font_path))
+    try:
+        controlled_epoch = source_date_epoch(args.source_date_epoch)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # Multi-weight support: verify the base master IS the cut the caller named,
     # then derive the subfamily. The check is read-only — usWeightClass,
@@ -1955,11 +2194,55 @@ def main():
         warn_if_ofl_rfn(font, args.name)
 
     # Load mapping
-    mapping = normalize_mapping(load_mapping())
+    try:
+        mapping = normalize_mapping(load_mapping())
+    except MappingContractError as exc:
+        print(f"[FAIL] mapping contract {exc.code}: {exc}")
+        if diag.json_out is not None:
+            diag.fail("mapping contract rejected", stage="validation",
+                      code=CODE_VALIDATION_FAILED,
+                      details={"contract_code": exc.code},
+                      exit_code=EXIT_VALIDATION)
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
+        return 1
 
     # Drop many-to-one target collisions so no encoded word can render as a
     # different real word (see make_injective). Keeps the font unambiguous.
     mapping = make_injective(mapping)
+
+    compatibility_inputs = {
+        "script": shape_script_tag,
+        "language": shape_language_tag,
+        "script_langsys": script_langsys,
+        "supported_mark_set": supported_mark_set_id,
+        "supported_marks": sorted(supported_marks),
+        "normalization": args.normalization,
+        "features": args.shape_features,
+        "axes": shape_axes,
+        "weight": args.weight,
+        "post_format_3": args.post_format_3,
+        "mapping_out": args.mapping_out or "",
+        "gsub_optimization": args.gsub_optimization,
+        "source_date_epoch": args.source_date_epoch,
+    }
+    global MAPPING_BUNDLE_ID
+    MAPPING_BUNDLE_ID = build_bundle_identity(
+        mapping,
+        hashlib.sha256(font_path.read_bytes()).hexdigest(),
+        nonce=args.document_nonce,
+        tenant=args.tenant_id,
+        compatibility=compatibility_inputs,
+    )
+    if args.cache_key:
+        MAPPING_BUNDLE_ID = build_bundle_identity(
+            mapping,
+            MAPPING_BUNDLE_ID,
+            nonce=args.document_nonce,
+            tenant=args.tenant_id,
+            compatibility={**compatibility_inputs, "cache_key": args.cache_key},
+        )
+    print(f"[OK] Bundle identity: bundle_id={MAPPING_BUNDLE_ID} cache_status=miss")
 
     # Emit the injective mapping for the encoder — SINGLE SOURCE OF TRUTH.
     # make_injective may have DROPPED colliding pairs, so the encoder MUST use
@@ -1975,7 +2258,9 @@ def main():
               "a mapping whose canonical emission already exists")
     else:
         try:
-            map_out_path.write_text(json.dumps(mapping, ensure_ascii=False, indent=0))
+            map_out_path.write_text(json.dumps(
+                mapping_output_payload(mapping), ensure_ascii=False, indent=0
+            ))
             print(f"[OK] Emitted encoder mapping (SINGLE SOURCE OF TRUTH — encode ONLY "
                   f"with this file): {map_out_path} ({len(mapping)} entries)")
         except Exception as e:
@@ -1985,8 +2270,9 @@ def main():
     # glyph-name salt (see GLYPH_NAME_SALT) and names the emitted encoder mapping.
     variant = (args.mapping_out or args.prefix.replace("shieldfont-", "")) or args.prefix
     mapping_id = read_mapping_id() or variant
-    glyph_salt = args.glyph_name_salt or derive_glyph_name_salt(mapping_id)
-    print(f"[OK] Glyph-name salt: derived from mapping id {mapping_id!r}"
+    glyph_salt = args.glyph_name_salt or derive_glyph_name_salt(MAPPING_BUNDLE_ID)
+    print(f"[OK] Glyph-name salt: derived from opaque bundle identity "
+          f"bundle_id={MAPPING_BUNDLE_ID}"
           if not args.glyph_name_salt else
           "[OK] Glyph-name salt: supplied via --glyph-name-salt (record it — the "
           "same value is required to reproduce this build)")
@@ -2001,7 +2287,9 @@ def main():
             if enc_dir.exists():
                 enc_path = enc_dir / f"{variant}.json"
                 had_meta = enc_path.exists() and '"_meta"' in enc_path.read_text()[:200]
-                enc_path.write_text(json.dumps(mapping, ensure_ascii=False, indent=0))
+                enc_path.write_text(json.dumps(
+                    mapping_output_payload(mapping), ensure_ascii=False, indent=0
+                ))
                 print(f"[OK] Emitted encoder mapping (monorepo bundled encoder): "
                       f"{enc_path} ({len(mapping)} entries)")
                 if had_meta:
@@ -2149,78 +2437,36 @@ def main():
         if safe_name in font.getGlyphOrder():
             safe_name = safe_name + ".lig"
 
-        # Lowercase variant
-        encoded_glyph_names = []
-        missing = False
-        for ch in encoded_word:
-            gname = get_glyph_name_for_char(font, ch)
-            if gname is None:
-                missing = True
-                break
-            encoded_glyph_names.append(gname)
-
-        if missing:
-            skip_count += 1
-            continue
-
-        ok = create_composite_glyph(
-            font, original_word, safe_name, shaper=shape_runner,
-            script=shape_script_tag, language=shape_language_tag,
-            features=args.shape_features, axes=shape_axes, strict=strict_shape,
-        )
-        if not ok:
-            skip_count += 1
-            continue
-
-        ligature_map[safe_name] = encoded_glyph_names
-        success_count += 1
-
-        # Capitalized variant
-        cap_encoded = encoded_word[0].upper() + encoded_word[1:]
-        cap_original = original_word[0].upper() + original_word[1:]
-        cap_safe_name = safe_name + ".cap"
-
-        cap_glyph_names = []
-        cap_ok = True
-        for ch in cap_encoded:
-            gname = get_glyph_name_for_char(font, ch)
-            if gname is None:
-                cap_ok = False
-                break
-            cap_glyph_names.append(gname)
-
-        if cap_ok:
-            ok2 = create_composite_glyph(
-                font, cap_original, cap_safe_name, shaper=shape_runner,
+        forms = [("lower", original_word, encoded_word, "")]
+        if MAPPING_CASE_FORM in {"preserve", "title"}:
+            forms.append((
+                "title",
+                original_word[0].upper() + original_word[1:],
+                encoded_word[0].upper() + encoded_word[1:],
+                ".cap",
+            ))
+        if MAPPING_CASE_FORM in {"preserve", "upper"}:
+            forms.append(("upper", original_word.upper(), encoded_word.upper(), ".upper"))
+        for _form, form_original, form_encoded, suffix in forms:
+            form_glyph_names = []
+            form_ok = True
+            for ch in form_encoded:
+                gname = get_glyph_name_for_char(font, ch)
+                if gname is None:
+                    form_ok = False
+                    break
+                form_glyph_names.append(gname)
+            if not form_ok:
+                if _form == "lower":
+                    skip_count += 1
+                continue
+            form_name = safe_name + suffix
+            if create_composite_glyph(
+                font, form_original, form_name, shaper=shape_runner,
                 script=shape_script_tag, language=shape_language_tag,
                 features=args.shape_features, axes=shape_axes, strict=strict_shape,
-            )
-            if ok2:
-                ligature_map[cap_safe_name] = cap_glyph_names
-                success_count += 1
-
-        # ALL CAPS variant
-        upper_encoded = encoded_word.upper()
-        upper_original = original_word.upper()
-        upper_safe_name = safe_name + ".upper"
-
-        upper_glyph_names = []
-        upper_ok = True
-        for ch in upper_encoded:
-            gname = get_glyph_name_for_char(font, ch)
-            if gname is None:
-                upper_ok = False
-                break
-            upper_glyph_names.append(gname)
-
-        if upper_ok:
-            ok3 = create_composite_glyph(
-                font, upper_original, upper_safe_name, shaper=shape_runner,
-                script=shape_script_tag, language=shape_language_tag,
-                features=args.shape_features, axes=shape_axes, strict=strict_shape,
-            )
-            if ok3:
-                ligature_map[upper_safe_name] = upper_glyph_names
+            ):
+                ligature_map[form_name] = form_glyph_names
                 success_count += 1
 
     print(f"[OK] Created {success_count} composite glyphs, skipped {skip_count}")
@@ -2267,6 +2513,7 @@ def main():
         script_langsys=script_langsys or None,
         supported_marks=supported_marks,
         feature_tag=source_feature_tag,
+        optimization=args.gsub_optimization,
     )
 
     # NOTE: do not pre-promote lookups to Extension here. HarfBuzz's repacker
@@ -2281,6 +2528,7 @@ def main():
 
     ttf_path = OUTPUT_DIR / f"{args.prefix}.ttf"
     font.flavor = None
+    deterministic_font_metadata(font, controlled_epoch)
     # The TTF is the DOWNLOAD tier: it has to be selectable by a human in Word's
     # font menu, and audit_font.py names the glyphs it shaped. So it keeps its
     # glyph names unless the caller explicitly asks otherwise.
@@ -2299,9 +2547,63 @@ def main():
         n = drop_glyph_names(font2)
         if n:
             print(f"[OK] post -> format 3.0 on the WOFF2 ({n:,} glyph names dropped)")
+    deterministic_font_metadata(font2, controlled_epoch)
     font2.flavor = "woff2"
     font2.save(str(woff2_path))
     print(f"[OK] Saved WOFF2: {woff2_path} ({woff2_path.stat().st_size:,} bytes)")
+
+    artifact_dir = args.artifact_dir or str(OUTPUT_DIR)
+    if artifact_dir:
+        try:
+            artifact_manifest = emit_canonical_artifacts(
+                artifact_dir,
+                mapping=mapping,
+                audit_font=ttf_path,
+                web_font=woff2_path,
+                mapping_id=mapping_id,
+                bundle_id=MAPPING_BUNDLE_ID,
+                profile=(MAPPING_CONTRACT or {}).get("profile", "compatibility"),
+                shaping={
+                    "status": "not-run",
+                    "font_glyphs": glyph_count_before + success_count,
+                    "lookup_count": len(font2["GSUB"].table.LookupList.Lookup)
+                    if "GSUB" in font2 else 0,
+                },
+                performance={
+                    "mapping_pairs": len(mapping),
+                    "font_glyphs": glyph_count_before + success_count,
+                    "gsub_optimization": args.gsub_optimization,
+                },
+                security_report=(
+                    "# ShieldFont security report\n\n"
+                    "The public font omits glyph names (`post` format 3). "
+                    "Mapping audit files and the audit TTF are private.\n\n"
+                    "This raises the cost of casual scraping and records provenance; "
+                    "it is not cryptography, confidentiality, authorization, or DRM.\n"
+                ),
+                source_date_epoch=controlled_epoch,
+            )
+            manifest_digest = hashlib.sha256(
+                json.dumps(artifact_manifest, sort_keys=True).encode("utf-8")
+            ).hexdigest()[:16]
+            scan = scan_public_artifacts(artifact_dir, forbidden_words=mapping)
+            if scan["status"] != "pass":
+                raise ValueError(
+                    f"public artifact scanner found {scan['finding_count']} findings"
+                )
+            print(
+                f"[OK] Canonical artifacts: role=public/private/verification "
+                f"count={len(artifact_manifest.get('artifacts', []))} "
+                f"manifest_hash={manifest_digest}"
+            )
+        except (OSError, ValueError) as exc:
+            print(f"[FAIL] canonical artifact emission failed: {type(exc).__name__}: {exc}")
+            if diag.json_out is not None:
+                diag.fail("canonical artifact emission failed", stage="output",
+                          code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+                return diag.finish(EXIT_OUTPUT, stage="output",
+                                   code=CODE_OUTPUT_UNWRITABLE)
+            return 1
 
     # Write CSS. A weight build declares its real numeric weight so the face
     # only claims the cut it actually is; the default (no --weight) keeps the
@@ -2327,7 +2629,10 @@ def main():
     print(f"  Encode ONLY with: {map_out_path}")
     print("=" * 60)
     if diag.json_out is not None:
-        return diag.finish(0, stage="complete", details={"status": "written"})
+        result_details = {"status": "written"}
+        if isinstance(MAPPING_CONTRACT, dict):
+            result_details.update(MAPPING_CONTRACT.get("diagnostics", {}))
+        return diag.finish(0, stage="complete", details=result_details)
     return 0
 
 

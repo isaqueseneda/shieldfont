@@ -18,6 +18,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mapping_contract import validate_contract  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 CORE = ROOT / "packages" / "core"
 MAPDIR = CORE / "src" / "mappings"
@@ -54,9 +57,26 @@ def main() -> int:
             print(f"[skip] {variant}: {path} missing")
             continue
         raw = json.loads(path.read_text())
-        pairs = {k: v for k, v in raw.items() if not k.startswith("_")}
+        contract = validate_contract(raw)
+        pairs = {k: v for k, v in raw.items()
+                 if not k.startswith("_") and k not in {"schema", "profile", "case",
+                                                        "case_behavior", "seed",
+                                                        "mapping_seed", "groups",
+                                                        "document_nonce", "nonce"}}
         uvar = USER_VARIANT.get(variant, variant)
         fam = FAMILY.get(variant, variant)
+        if contract.get("legacy"):
+            pair_count = sum(1 for k in pairs if isinstance(k, str) and k.isalpha())
+            profile = "compatibility"
+            group_count = 0
+            seed_value = info.get("seed")
+            nonce_meta = {"source": "none", "digest_prefix": ""}
+        else:
+            pair_count = sum(len(entry["sources"]) for entry in contract["groups"])
+            profile = contract["profile"]
+            group_count = len(contract["groups"])
+            seed_value = contract.get("seed")
+            nonce_meta = contract["nonce"]
         meta = {
             "name": "shieldfont",
             "lang": "en",
@@ -66,12 +86,23 @@ def main() -> int:
             "mappingId": f"shieldfont-en-{fam}-{uvar}@{VERSION}",
             # mirror MANIFEST's declared pair count (single provenance source);
             # fall back to a live count of word entries in the shipped file.
-            "pairs": info.get("pairs", sum(1 for k in pairs if k.isalpha())),
-            "seed": info.get("seed"),
+            "pairs": info.get("pairs", pair_count),
+            "seed": seed_value if seed_value is not None else info.get("seed"),
+            "profile": profile,
+            "groups": group_count,
+            "nonceSource": nonce_meta["source"],
+            "nonceDigestPrefix": nonce_meta["digest_prefix"],
             "font": f"{FONT_BASENAME.get(variant, 'optik-' + variant)}.woff2",
             "family": FAMILY_LABEL.get(variant, "ShieldFont"),
         }
-        out = {"_meta": meta, **pairs}
+        if "groups" in raw:
+            out = dict(raw)
+            out.pop("document_nonce", None)
+            out.pop("nonce", None)
+            out["nonce_meta"] = nonce_meta
+            out["_meta"] = meta
+        else:
+            out = {"_meta": meta, **pairs}
         path.write_text(json.dumps(out, ensure_ascii=False, indent=0))
         print(f"[ok] {variant}: {meta['mappingId']} (pairs={meta['pairs']}, seed={meta['seed']})")
     return 0

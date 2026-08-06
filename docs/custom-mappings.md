@@ -20,7 +20,7 @@ You can also vary the **base typeface**, independently of the mapping. That is a
 
 | File | Where it lives | What it is |
 |---|---|---|
-| `your-mapping.json` | **Private. Local disk only.** | The encoder dictionary. The thing scrapers cannot have. |
+| `your-mapping.json` | **Private. Local disk only.** | The source contract or encoder dictionary. The thing scrapers cannot have. |
 | `your-font.woff2` | Your CDN (or self-hosted) | The font binary. Its GSUB ligatures map encoded glyphs back to the originals, so the font itself is a decoder ring: anyone who downloads it can read the pairs back out. It is not a secret. |
 | `your-font.css` | Your CDN | `@font-face` declaration. |
 | Your encoded HTML | Your site | What scrapers actually scrape. A plausible decoy without the mapping. |
@@ -78,6 +78,42 @@ python3 scripts/audit_font.py --font public/fonts/shieldfont-mine.ttf \
 Then keep `mine/mapping.json` off your servers, ship the font and CSS, and encode with the mapping (see [Pointing your code at a custom mapping](#pointing-your-code-at-a-custom-mapping) below).
 
 **Store your seed.** The reseed is deterministic: the same seed and the same source pool always produce a byte-identical mapping. That is your backup. Lose the JSON and you can regenerate it from the seed alone; lose both and you cannot decode your own archived pages.
+
+### Versioned groups, aliases, and document nonces
+
+The default reseed output is a `shieldfont.mapping.v2` contract. It keeps
+ordered source groups, grammar buckets, case behavior, and one or more aliases
+per source. Alias selection is deterministic for the mapping seed, document
+nonce, normalized position, source, and group scope. A nonce changes the
+selected aliases for a document build; it is a private input, not a secret
+published to the browser. Pass it with `--document-nonce` (or `--nonce`):
+
+```bash
+python3 scripts/reseed_mapping.py \
+  --seed 8675309 \
+  --document-nonce document-2026-08-06 \
+  --out mine/document-mapping.json
+```
+
+The nonce itself is never printed or copied into `mapping.json`, audit output,
+cache paths, manifests, or machine-readable diagnostics. Safe diagnostics may
+include only a bounded digest prefix and a source label. Keep the original
+nonce in restricted build storage if deterministic replay is required.
+
+For compatibility with an older flat encoder, use `--legacy-flat` (also
+accepted as `--compatibility`). The flat output remains an involution and has
+no alias rotation. `build_alpha_mapping.py` accepts the same flags and emits
+either the grouped v2 contract or the legacy flat form. The grouped contract
+is the source-of-truth input; the generated
+`public/fonts/<prefix>.map.json` is the exact mapping paired with that font.
+
+Canonical artifact output is opt-in with `--artifact-dir DIR` on the generator,
+auditor, or subsetter. `mapping.json` and the web font are public delivery
+artifacts. `mapping.audit.json`, `mapping.audit.csv`, and `font-audit.ttf`
+contain reverse/audit material and stay private. Shaping, performance,
+security, and manifest files are verification/build metadata, not browser
+payloads. `--json-out PATH` is safe for CI diagnostics: it must not contain
+mapping words, raw document nonces, tenant IDs, or customer content.
 
 ### Two limits worth knowing
 

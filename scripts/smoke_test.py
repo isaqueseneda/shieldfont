@@ -150,7 +150,7 @@ def end_to_end(tmp: Path) -> None:
     mapping = tmp / "mapping.json"
 
     if run("reseed_mapping.py", ["scripts/reseed_mapping.py", "--seed",
-                                 "12345", "--out", str(mapping)]):
+                                 "12345", "--legacy-flat", "--out", str(mapping)]):
         m = json.loads(mapping.read_text())
         # every pair must map both ways, or the encoder cannot round-trip
         broken = [s for s, t in m.items() if m.get(t) != s]
@@ -161,6 +161,7 @@ def end_to_end(tmp: Path) -> None:
             fail(f"reseed_mapping.py: only {len(m)} entries, expected ~12k")
 
     if run("build_alpha_mapping.py", ["scripts/build_alpha_mapping.py",
+                                      "--legacy-flat",
                                       str(pairs), str(mapping)]):
         if len(json.loads(mapping.read_text())) < 1000:
             fail("build_alpha_mapping.py: implausibly small mapping")

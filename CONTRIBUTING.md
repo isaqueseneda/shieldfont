@@ -85,6 +85,20 @@ python3 scripts/generate_font.py \
 
 The output lands in `public/fonts/`.
 
+Run the acceptance checks before opening a pull request:
+
+```bash
+npm test
+npm run test:scripts
+python3 scripts/smoke_test.py
+```
+
+The upstream fonts job runs Python 3.12; use Python 3.12 locally for parity
+with the pinned `uharfbuzz` dependency.
+
+The script suite includes a CI contract check that fails if the workflow or
+`package.json` omits the first-class `test:scripts` command.
+
 ---
 
 ## Pull request process
@@ -145,6 +159,28 @@ are covered: you don't re-sign per PR.
 
 If you're contributing on behalf of an employer, your employer may need
 to sign a Corporate CLA. Open an issue and we'll coordinate.
+
+---
+
+## Repository and review facts (observed 2026-08-06)
+
+This is a factual project record, not a legal conclusion:
+
+- The configured Git remote is `https://github.com/alexeydott/shieldfont.git`.
+- `package.json` identifies Isaque Seneda and Gabriel Abrucio as authors, and
+  the repository documentation identifies them as the maintainers.
+- `LICENSE` states GNU AGPL v3.0; `CLA.md` is present and contains a
+  signatories table. Whether a particular contribution is authorized remains
+  a contributor and maintainer responsibility.
+- The documented review route is: open an issue for work beyond a small fix,
+  fork the repository, branch from `main`, sign the CLA when required, and
+  submit a focused pull request. The configured remote's GitHub `main` branch
+  was reported as `protected: false` when checked; no branch-protection rule
+  was verified from this clone.
+- A GitHub query for pull requests on the configured remote returned no
+  records at the time of checking. This does not establish that no review
+  route exists elsewhere, and publication authority for this local fork was
+  not independently verified.
 
 ---
 

@@ -51,6 +51,7 @@ from fontTools.ttLib import TTFont
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from generate_font import drop_glyph_names  # noqa: E402  (shared single source)
+from artifact_contract import deterministic_font_metadata, source_date_epoch  # noqa: E402
 from script_diagnostics import (  # noqa: E402
     CODE_INPUT_NOT_FOUND,
     CODE_OUTPUT_UNWRITABLE,
@@ -141,9 +142,15 @@ def main():
     ap.add_argument("--inplace", action="store_true", help="Overwrite the input")
     ap.add_argument("--no-shape", action="store_true",
                     help="Skip the (slow) HarfBuzz equivalence check; keep the structural ones")
+    ap.add_argument("--source-date-epoch", type=int,
+                    help="Controlled timestamp for reproducible font metadata")
     add_json_result_argument(ap)
     a = ap.parse_args()
     diag = Diagnostics(__file__, a.json_out)
+    try:
+        controlled_epoch = source_date_epoch(a.source_date_epoch)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     infile = Path(a.infile)
     if not infile.exists():
@@ -168,7 +175,8 @@ def main():
     font = TTFont(str(infile))
     before = _snapshot(font)
     dropped = drop_glyph_names(font)
-    if dropped == 0:
+    deterministic_font_metadata(font, controlled_epoch)
+    if dropped == 0 and controlled_epoch is None:
         print(f"[OK] {infile.name}: `post` already format 3.0 — nothing to do")
         if out != infile:
             try:
@@ -183,6 +191,9 @@ def main():
                                        code=CODE_OUTPUT_UNWRITABLE)
                 raise
         return diag.finish(0, stage="complete", details={"status": "unchanged"}) if diag.json_out is not None else 0
+
+    if dropped == 0:
+        print(f"[OK] {infile.name}: `post` already format 3.0 — normalizing metadata")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(str(out) + ".tmp")

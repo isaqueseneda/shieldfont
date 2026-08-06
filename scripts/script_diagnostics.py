@@ -44,8 +44,8 @@ CODE_JSON_OUTPUT_FAILED = "json_output_failed"
 
 _SAFE_KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _SENSITIVE = re.compile(
-    r"(mapping|document|content|text|secret|credential|password|token|"
-    r"authorization|cookie|raw|probe|source|target|word|value)",
+    r"(content|text|secret|credential|password|token|authorization|cookie|"
+    r"raw|probe|private|reverse|source_value|target_value|word|value)",
     re.I,
 )
 _SAFE_STRING_KEYS = {
@@ -60,6 +60,25 @@ _SAFE_STRING_KEYS = {
     "script",
     "status",
     "supported_mark_set_id",
+    "schema",
+    "profile",
+    "seed_id",
+    "nonce_source",
+    "nonce_digest_prefix",
+    "contract_code",
+    "inventory_digest",
+    "bundle_id",
+    "cache_status",
+    "binding_status",
+}
+
+_SAFE_COUNTER_KEYS = {
+    "alias_cardinality_histogram",
+    "case_counts",
+    "fallback_decisions",
+    "sizes",
+    "kept_groups",
+    "dropped_groups",
 }
 
 
@@ -81,7 +100,14 @@ def safe_details(details: dict[str, Any] | None) -> dict[str, Any]:
     for key, value in (details or {}).items():
         if not isinstance(key, str) or not _SAFE_KEY.fullmatch(key):
             continue
-        if _SENSITIVE.search(key):
+        safe_numeric = {
+            "inventory_count", "token_count", "reserve_requested",
+            "reserve_selected", "kept_group_count", "dropped_group_count",
+            "mapping_word_count", "font_word_count", "missing_count",
+            "extra_count", "cache_hit", "cache_miss", "ttf_bytes", "woff2_bytes",
+            "glyphs_before", "glyphs_after",
+        }
+        if _SENSITIVE.search(key) and key not in safe_numeric:
             continue
         if isinstance(value, bool) or isinstance(value, int):
             safe[key] = value
@@ -89,6 +115,13 @@ def safe_details(details: dict[str, Any] | None) -> dict[str, Any]:
             safe[key] = value if value == value and abs(value) != float("inf") else None
         elif isinstance(value, str) and key in _SAFE_STRING_KEYS:
             safe[key] = value[:64]
+        elif isinstance(value, dict) and key in _SAFE_COUNTER_KEYS:
+            bounded = {}
+            for item_key, item_value in sorted(value.items(), key=lambda item: str(item[0]))[:32]:
+                if isinstance(item_key, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", item_key):
+                    if isinstance(item_value, (bool, int)) and not isinstance(item_value, bool):
+                        bounded[item_key] = int(item_value)
+            safe[key] = bounded
     return safe
 
 

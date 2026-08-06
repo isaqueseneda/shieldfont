@@ -43,6 +43,7 @@ from script_diagnostics import (  # noqa: E402
     EXIT_VALIDATION,
     add_json_result_argument,
 )
+from artifact_contract import deterministic_font_metadata, source_date_epoch  # noqa: E402
 
 
 def set_name(font: TTFont, name_id: int, value: str) -> None:
@@ -110,9 +111,15 @@ def main() -> int:
     ap.add_argument("--no-shape", action="store_true",
                     help="skip the (slow) harfbuzz render-equivalence check; keep the cheap packer/glyph/name checks")
     ap.add_argument("--shape-word", default="analyze", help="an ENCODED word expected to fire a ligature")
+    ap.add_argument("--source-date-epoch", type=int,
+                    help="Controlled timestamp for reproducible font metadata")
     add_json_result_argument(ap)
     a = ap.parse_args()
     diag = Diagnostics(__file__, a.json_out)
+    try:
+        controlled_epoch = source_date_epoch(a.source_date_epoch)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     infile = Path(a.infile)
     if a.inplace:
@@ -160,6 +167,7 @@ def main() -> int:
     if a.description:
         set_name(src, 10, a.description)
     src["head"].fontRevision = float(f"{mm[0]}.{mm[1]}") if len(mm) >= 2 else float(mm[0])
+    deterministic_font_metadata(src, controlled_epoch)
 
     tmp = Path(str(out) + ".tmp")
     try:

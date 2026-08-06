@@ -1,0 +1,6 @@
+{
+  "empty": [],
+  "unknown": ["unknown"],
+  "required": ["alpha"],
+  "same_document": ["alpha", "alpha"]
+}

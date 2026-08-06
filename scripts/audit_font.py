@@ -24,6 +24,7 @@ Usage:
 Requires: fontTools, hb-shape on PATH (brew install harfbuzz).
 """
 import json
+import hashlib
 import re
 import shutil
 import subprocess
@@ -57,6 +58,10 @@ from script_diagnostics import (  # noqa: E402
     EXIT_VALIDATION,
     add_json_result_argument,
 )
+from artifact_contract import (  # noqa: E402
+    emit_canonical_artifacts,
+    private_mapping_payload,
+)
 
 # Defaults audit the maxhide build, which is what m15en_for_font.json produces
 # (see packages/core/MANIFEST.json → variants.m15en.font). Override with
@@ -77,6 +82,8 @@ HB_LANGUAGE = "dflt"
 HB_FEATURES = ",".join((*SOURCE_FEATURE_TAGS, RESTORATION_FEATURE_TAG, "liga", "kern"))
 ENGINE_RUNNER = None
 ENGINE_GLYPH_ORDER = None
+ARTIFACT_DIR = None
+WEB_FONT = None
 
 
 def hb_shape(text):
@@ -245,7 +252,12 @@ def audit(diag=None):
         print("[FAIL] HarfBuzz backend unavailable: hb-shape not found")
         return 1
     try:
-        mapping = json.loads(MAPPING_PATH.read_text())
+        raw_mapping = json.loads(MAPPING_PATH.read_text())
+        mapping = {
+            str(source): target
+            for source, target in raw_mapping.items()
+            if not str(source).startswith("_") and isinstance(target, str)
+        }
     except Exception as exc:
         if diag is not None:
             diag.fail("mapping input is invalid", stage="input",
@@ -455,8 +467,9 @@ def audit(diag=None):
     else:
         print(f"[3/3] Composite metrics: all {n_composites} word glyphs have lsb == xMin")
 
-    try:
-        JSON_OUT.write_text(json.dumps({
+    public_audit_payload = {
+            "schema": "shieldfont.audit-public.v1",
+            "privacy": "verification",
             "summary": {
                 "roundtrip_pass": pass_count, "roundtrip_fail": fail_count,
                 "collision_pass": coll_pass, "collision_fail": coll_fail,
@@ -469,8 +482,10 @@ def audit(diag=None):
                 "engine_unavailable": engine_unavailable,
             },
             "feature_stages": stage_info,
-            "results": results,
-        }, indent=2))
+            "result_count": len(results),
+        }
+    try:
+        JSON_OUT.write_text(json.dumps(public_audit_payload, indent=2, sort_keys=True) + "\n")
     except OSError as exc:
         print(f"[FAIL] could not write audit JSON: {type(exc).__name__}: {exc}")
         if diag is not None:
@@ -478,6 +493,42 @@ def audit(diag=None):
                       code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
             return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
     print(f"\n  JSON: {JSON_OUT}")
+
+    if ARTIFACT_DIR is not None:
+        web_path = Path(WEB_FONT) if WEB_FONT else FONT_TTF.with_suffix(".woff2")
+        if not web_path.exists():
+            print(f"[FAIL] canonical artifact web font not found: {web_path.name}")
+            if diag is not None:
+                diag.fail("canonical artifact web font not found", stage="input",
+                          code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+                return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+            return 1
+        private = private_mapping_payload(mapping)
+        private["audit"] = {
+            "summary": public_audit_payload["summary"],
+            "feature_stages": stage_info,
+            "results": results,
+        }
+        canonical_root = Path(ARTIFACT_DIR)
+        canonical_root.mkdir(parents=True, exist_ok=True)
+        emit_canonical_artifacts(
+            canonical_root,
+            mapping=mapping,
+            audit_font=FONT_TTF,
+            web_font=web_path,
+            audit_payload=private,
+            shaping={
+                "status": "passed" if not (fail_count or coll_fail or metrics_bad) else "failed",
+                "checks": public_audit_payload["summary"],
+                "feature_stages": stage_info,
+            },
+            performance={
+                "mapping_pairs": len(mapping),
+                "font_bytes": FONT_TTF.stat().st_size,
+                "roundtrip_checks": rt_total,
+            },
+        )
+        print("[OK] Canonical artifacts: role=public/private/verification")
 
     # ------------------------------------------------------------------
     # 4) HTML report — visual side-by-side for human review.
@@ -646,8 +697,9 @@ def write_html_report(mapping, results, rt_pass, rt_fail, coll_pass, coll_fail):
             f"</tr>"
         )
 
-    import time
-    cache_bust = str(int(time.time()))
+    cache_bust = hashlib.sha256(
+        json.dumps(sorted(mapping.items()), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()[:12]
     # The report renders the font it actually audited, whatever --font pointed at.
     font_stem = FONT_TTF.stem
     html_body = f"""<!DOCTYPE html>
@@ -795,6 +847,10 @@ if __name__ == "__main__":
                     help="HarfBuzz/OpenType script tag used by the shaping audit")
     ap.add_argument("--language", default="dflt",
                     help="HarfBuzz/OpenType language tag used by the shaping audit")
+    ap.add_argument("--artifact-dir",
+                    help="Emit the canonical versioned artifact bundle into this directory")
+    ap.add_argument("--web-font",
+                    help="Web WOFF2 paired with --font for canonical artifact emission")
     add_json_result_argument(ap)
     args = ap.parse_args()
     diag = Diagnostics(__file__, args.json_out)
@@ -806,6 +862,8 @@ if __name__ == "__main__":
         MAPPING_PATH = Path(args.mapping).resolve()
     if args.html_out:
         HTML_OUT = Path(args.html_out).resolve()
+    ARTIFACT_DIR = Path(args.artifact_dir).resolve() if args.artifact_dir else None
+    WEB_FONT = Path(args.web_font).resolve() if args.web_font else None
     try:
         HB_SCRIPT = normalize_ot_tag(args.script, kind="script")
         HB_LANGUAGE = normalize_ot_tag(args.language, kind="language")

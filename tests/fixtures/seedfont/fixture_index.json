@@ -10,5 +10,8 @@
   "ci_contract": "ci_contract.json",
   "shape_contract": "shape_contract.json",
   "unicode_contract": "unicode_contract.json",
-  "feature_contract": "feature_contract.json"
+  "feature_contract": "feature_contract.json",
+  "mapping_contract": "mapping_contract.json",
+  "task8_contract": "task8_contract.json",
+  "task8_inventory": "task8_inventory.json"
 }

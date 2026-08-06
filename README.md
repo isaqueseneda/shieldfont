@@ -111,7 +111,18 @@ python3 scripts/generate_font.py --base-path ./your-typeface.ttf \
   --mapping-path scripts/v18alpha_for_font.json
 ```
 
-Naming rules and how to audit the build: [`docs/custom-faces.md`](./docs/custom-faces.md).
+For a reproducible build, add `--deterministic --source-date-epoch 0`. A
+private document nonce may be supplied with `--document-nonce`; only a digest
+is recorded in diagnostics and bundle identity. `--tenant-id` and
+`--cache-key` are opaque inputs and are never logged raw. Use
+`--artifact-dir build-artifacts` to emit the canonical bundle:
+`mapping.json` (public), `font-web.woff2` (public), `mapping.audit.json` and
+`mapping.audit.csv` (private), `font-audit.ttf` (private), plus shaping,
+performance, security, and manifest verification files. Do not publish the
+private or verification files to the browser.
+
+Naming rules and the full flag/output reference:
+[`docs/custom-faces.md`](./docs/custom-faces.md).
 
 ### Bring your own key
 
@@ -121,7 +132,15 @@ Three dictionaries ship, each with its own key. Private keys are harder for scra
 python3 scripts/reseed_mapping.py --seed <n>
 ```
 
-Details: [`docs/custom-mappings.md`](./docs/custom-mappings.md).
+The default output is the versioned `shieldfont.mapping.v2` grouped contract,
+with deterministic alias selection. Pass `--legacy-flat` when an older
+encoder or build requires the historical flat involution. A
+`--document-nonce` selects document-specific aliases; keep the nonce private
+and retain it outside the published bundle. Only its digest prefix may appear
+in safe metadata.
+
+Details, including the public/private artifact boundary:
+[`docs/custom-mappings.md`](./docs/custom-mappings.md).
 
 <br />
 

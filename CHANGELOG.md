@@ -6,6 +6,46 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — 2026-08-06
+
+### Added
+
+- Added versioned grouped mapping contracts with deterministic aliases,
+  document-specific nonce selection, compatibility flat output, and opaque
+  cache/bundle identities.
+- Added canonical build artifacts and manifests with explicit public, private,
+  and verification roles, including safe JSON diagnostics and deterministic
+  timestamp controls.
+- Added content-scoped subset outputs for paired font/mapping delivery,
+  reserve aliases, WOFF2 output, and cache-isolated identities.
+
+### Changed
+
+- Generator, subsetter, auditor, reseed, and stamping commands now document and
+  report safe digests rather than raw nonces, tenant identifiers, mapping
+  material, customer content, or absolute paths.
+- The upstream workflow keeps `npm run test:scripts` as a first-class CI step.
+- Updated custom-face and custom-mapping guides with the new flags, artifact
+  roles, reproducibility boundaries, and privacy limits.
+
+### Fixed
+
+- Public-artifact privacy scanning now matches mapping words as tokens, avoiding
+  false positives from ordinary font glyph or license names that merely contain
+  a mapping word as a substring.
+
+### Governance record
+
+- The configured remote is `https://github.com/alexeydott/shieldfont.git`;
+  repository metadata names Isaque Seneda and Gabriel Abrucio as authors or
+  maintainers, and `CLA.md` plus the AGPL-3.0 `LICENSE` are present.
+- The remote review instructions require focused pull requests and describe
+  the issue, fork, branch, and CLA steps. The remote API reported `main` as
+  unprotected on 2026-08-06; branch protection and publication authority were
+  not independently verified beyond that evidence.
+
+---
+
 ## [0.3.4] — 2026-08-04
 
 The fix is in `@shieldfont/font`. `core` and `react` are byte-identical to
