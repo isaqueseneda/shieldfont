@@ -1,0 +1,5 @@
+{
+  "fixture_id": "seedfont-task2-v1",
+  "required_script": "npm run test:scripts",
+  "required_discovery": "python -m unittest discover -s tests/scripts -p \"test_*.py\""
+}

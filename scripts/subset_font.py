@@ -124,6 +124,18 @@ from fontTools.ttLib import TTFont
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate_font import drop_glyph_names, make_injective  # noqa: E402
+from script_diagnostics import (  # noqa: E402
+    CODE_BACKEND_MISSING,
+    CODE_INPUT_NOT_FOUND,
+    CODE_OUTPUT_UNWRITABLE,
+    CODE_VALIDATION_FAILED,
+    Diagnostics,
+    EXIT_BACKEND,
+    EXIT_INPUT,
+    EXIT_OUTPUT,
+    EXIT_VALIDATION,
+    add_json_result_argument,
+)
 
 # Composite word glyphs are the only thing we ever prune. Everything else --
 # Latin base, punctuation, Optik's own fi/fl ligatures, the digit glyphs -- is
@@ -410,11 +422,19 @@ def subset_glyphs(font, keep_glyphs, keep_names):
 # 4. Self-check
 # ---------------------------------------------------------------------------
 
+HB_BACKEND_MISSING = False
+
+
 def hb_shape(font_path, text):
-    out = subprocess.run(
-        ["hb-shape", "--no-positions", str(font_path), text],
-        capture_output=True, text=True,
-    )
+    global HB_BACKEND_MISSING
+    try:
+        out = subprocess.run(
+            ["hb-shape", "--no-positions", str(font_path), text],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        HB_BACKEND_MISSING = True
+        return None
     if out.returncode != 0:
         return None
     s = out.stdout.strip().lstrip("[").rstrip("]")
@@ -515,12 +535,22 @@ def main():
     parser.add_argument("--report", action="store_true",
                         help="Print the long report: top uncovered words, extractor per file, "
                              "and the byte breakdown.")
+    add_json_result_argument(parser)
     args = parser.parse_args()
+    diag = Diagnostics(__file__, args.json_out)
 
     started = time.time()
     font_path = Path(args.font)
     out_prefix = Path(args.out)
-    out_prefix.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        out_prefix.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"[FAIL] could not prepare output directory: {type(exc).__name__}: {exc}")
+        if diag.json_out is not None:
+            diag.fail("could not prepare output directory", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+        return 1
 
     print("=" * 68)
     print("ShieldFont content-scoped subsetter")
@@ -532,19 +562,40 @@ def main():
     # ---- vocabulary -------------------------------------------------------
     files = resolve_inputs(args.content)
     if args.content and not files:
+        if diag.json_out is not None:
+            diag.fail("content input matched no files", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
         print(f"[FAIL] --content matched no files: {args.content}")
         return 1
     forced = None if args.format == "auto" else args.format
     stdin_fmt = forced or "text"
     counts, per_file = build_vocabulary(files, forced, args.wordlist, args.stdin, stdin_fmt)
     if not counts:
+        if diag.json_out is not None:
+            diag.fail("no words extracted from content", stage="input",
+                      code="input_empty", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_empty")
         print("[FAIL] No words extracted from the supplied content")
         return 1
     print(f"[OK] Content: {len(per_file)} input(s), {sum(counts.values()):,} tokens, "
           f"{len(counts):,} distinct words")
 
     # ---- mapping ----------------------------------------------------------
-    mapping, meta = load_mapping(args.mapping)
+    try:
+        mapping, meta = load_mapping(args.mapping)
+    except FileNotFoundError:
+        if diag.json_out is not None:
+            diag.fail("mapping input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        raise
+    except Exception as exc:
+        if diag.json_out is not None:
+            diag.fail("mapping input is invalid", stage="input",
+                      code="input_invalid", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_invalid")
+        raise
     mapping = make_injective(dict(mapping))
     multi = {s: d for s, d in mapping.items() if len(s) > 1}
     digits = {s: d for s, d in mapping.items() if len(s) == 1}
@@ -562,7 +613,20 @@ def main():
                 have.add(s)
     needed_sorted = sorted(needed)
 
-    font = TTFont(str(font_path))
+    try:
+        font = TTFont(str(font_path))
+    except FileNotFoundError:
+        if diag.json_out is not None:
+            diag.fail("font input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        raise
+    except Exception:
+        if diag.json_out is not None:
+            diag.fail("font input is invalid", stage="input",
+                      code="input_invalid", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_invalid")
+        raise
     glyphs_before = font["maxp"].numGlyphs
     decoy_index = index_font(font)
     print(f"[OK] Font: {glyphs_before:,} glyphs, {len(decoy_index):,} word pairs in GSUB")
@@ -610,7 +674,15 @@ def main():
     font.flavor = None
     if args.post_format_3 == "both":
         drop_glyph_names(font)
-    font.save(str(ttf_path))
+    try:
+        font.save(str(ttf_path))
+    except OSError as exc:
+        print(f"[FAIL] could not write TTF: {type(exc).__name__}: {exc}")
+        if diag.json_out is not None:
+            diag.fail("could not write TTF", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+        return 1
     ttf_bytes = ttf_path.stat().st_size
     print(f"[OK] Saved TTF: {ttf_path} ({ttf_bytes:,} bytes)")
 
@@ -621,7 +693,15 @@ def main():
         if args.post_format_3 in ("auto", "both"):
             drop_glyph_names(font2)
         font2.flavor = "woff2"
-        font2.save(str(woff2_path))
+        try:
+            font2.save(str(woff2_path))
+        except OSError as exc:
+            print(f"[FAIL] could not write WOFF2: {type(exc).__name__}: {exc}")
+            if diag.json_out is not None:
+                diag.fail("could not write WOFF2", stage="output",
+                          code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+                return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+            return 1
         woff2_bytes = woff2_path.stat().st_size
         print(f"[OK] Saved WOFF2: {woff2_path} ({woff2_bytes:,} bytes)")
 
@@ -646,7 +726,15 @@ def main():
     if out_meta.get("mappingId"):
         out_meta["mappingId"] = f"{out_meta['mappingId']}+subset.{subset_id}"
     map_path = Path(str(out_prefix) + ".map.json")
-    map_path.write_text(json.dumps({"_meta": out_meta, **subset_mapping}, indent=2) + "\n")
+    try:
+        map_path.write_text(json.dumps({"_meta": out_meta, **subset_mapping}, indent=2) + "\n")
+    except OSError as exc:
+        print(f"[FAIL] could not write mapping output: {type(exc).__name__}: {exc}")
+        if diag.json_out is not None:
+            diag.fail("could not write mapping output", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+        return 1
     print(f"[OK] Saved matched mapping: {map_path} ({len(subset_mapping):,} entries)")
 
     # ---- manifest ---------------------------------------------------------
@@ -676,7 +764,15 @@ def main():
         "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     manifest_path = Path(str(out_prefix) + ".subset.json")
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    try:
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    except OSError as exc:
+        print(f"[FAIL] could not write manifest output: {type(exc).__name__}: {exc}")
+        if diag.json_out is not None:
+            diag.fail("could not write manifest output", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+        return 1
 
     if args.css:
         family = args.family
@@ -698,7 +794,13 @@ def main():
         print(f"[..] Self-check: shaping {min(args.self_check, len(kept_pairs))} kept pairs "
               f"x3 case variants through the subset font...")
         checks, failures = self_check(ttf_path, kept_pairs, decoy_index, args.self_check)
-        if failures:
+        if HB_BACKEND_MISSING:
+            rc = EXIT_BACKEND
+            print("[FAIL] HarfBuzz backend unavailable: hb-shape not found")
+            if diag.json_out is not None:
+                diag.fail("HarfBuzz backend unavailable", stage="backend",
+                          code=CODE_BACKEND_MISSING, exit_code=EXIT_BACKEND)
+        elif failures:
             rc = 1
             print(f"[FAIL] {len(failures)} / {checks} round-trip checks failed:")
             for src, decoy, probe, want, got in failures[:20]:
@@ -750,6 +852,16 @@ def main():
     print("  Re-run whenever the content changes; diff contentHash in "
           f"{manifest_path.name} in CI.")
     print("=" * 68)
+    if diag.json_out is not None:
+        if rc == EXIT_BACKEND:
+            return diag.finish(EXIT_BACKEND, stage="backend",
+                               code=CODE_BACKEND_MISSING)
+        if rc:
+            diag.fail("self-check validation failed", stage="validation",
+                      code=CODE_VALIDATION_FAILED, exit_code=EXIT_VALIDATION)
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
+        return diag.finish(0, stage="complete", details={"status": "written"})
     return rc
 
 

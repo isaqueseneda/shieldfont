@@ -52,6 +52,17 @@ from fontTools.ttLib.tables import otTables
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parent
+sys.path.insert(0, str(SCRIPT_DIR))
+from script_diagnostics import (  # noqa: E402
+    CODE_INPUT_NOT_FOUND,
+    CODE_OUTPUT_UNWRITABLE,
+    CODE_VALIDATION_FAILED,
+    Diagnostics,
+    EXIT_INPUT,
+    EXIT_OUTPUT,
+    EXIT_VALIDATION,
+    add_json_result_argument,
+)
 DEFAULT_MAPPING_PATH = SCRIPT_DIR / "word_mapping.json"
 MAPPING_PATH = DEFAULT_MAPPING_PATH  # may be overridden in main()
 FONT_CACHE_DIR = SCRIPT_DIR / "fonts"
@@ -1040,8 +1051,9 @@ def warn_if_ofl_rfn(font, family_name):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate ShieldFont variant")
-    parser.add_argument("--base-url", help="Google Fonts download URL (or use --base-path)")
-    parser.add_argument("--base-path", help="Path to a local TTF/OTF file (alternative to --base-url)")
+    base_source = parser.add_mutually_exclusive_group(required=True)
+    base_source.add_argument("--base-url", help="Google Fonts download URL")
+    base_source.add_argument("--base-path", help="Path to a local TTF/OTF file")
     parser.add_argument("--cache-name", help="Filename for cached base font (required with --base-url)")
     parser.add_argument("--name", help="Font family name written into the output "
                         "(e.g. 'ShieldFont Datatype'). OPTIONAL — when omitted, the "
@@ -1089,9 +1101,9 @@ def main():
                              "(see GLYPH_NAME_SALT). Pass your own for a private mapping — you "
                              "need the SAME value to reproduce the build, and audit_font.py needs "
                              "it via --glyph-name-salt too.")
+    add_json_result_argument(parser)
     args = parser.parse_args()
-    if not args.base_url and not args.base_path:
-        parser.error("Must provide either --base-url or --base-path")
+    diag = Diagnostics(__file__, args.json_out)
     if args.mapping_path:
         global MAPPING_PATH
         MAPPING_PATH = Path(args.mapping_path)
@@ -1104,8 +1116,12 @@ def main():
     if args.base_path:
         font_path = Path(args.base_path)
         if not font_path.exists():
+            if diag.json_out is not None:
+                diag.fail("local font not found", stage="input",
+                          code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+                return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
             print(f"[FAIL] Local font not found: {font_path}")
-            sys.exit(1)
+            return 1
         print(f"[OK] Using local font {font_path}")
     else:
         font_path = download_font(args.base_url, args.cache_name)
@@ -1125,7 +1141,12 @@ def main():
                   f"is {actual_wc}. Wrong master? Pass the real static cut for this "
                   f"weight via --base-path; this pipeline never interpolates or "
                   f"synthesises weights.")
-            sys.exit(1)
+            if diag.json_out is not None:
+                diag.fail("base font weight mismatch", stage="validation",
+                          code=CODE_VALIDATION_FAILED, exit_code=EXIT_VALIDATION)
+                return diag.finish(EXIT_VALIDATION, stage="validation",
+                                   code=CODE_VALIDATION_FAILED)
+            return 1
         print(f"[OK] Base cut verified: usWeightClass {actual_wc} matches --weight")
     subfamily = args.subfamily or (
         WEIGHT_SUBFAMILY.get(args.weight, "Regular") if args.weight is not None else "Regular"
@@ -1464,7 +1485,10 @@ def main():
     print(f"  Ligatures: {success_count}")
     print(f"  Encode ONLY with: {map_out_path}")
     print("=" * 60)
+    if diag.json_out is not None:
+        return diag.finish(0, stage="complete", details={"status": "written"})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

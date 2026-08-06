@@ -25,6 +25,7 @@ Requires: fontTools, hb-shape on PATH (brew install harfbuzz).
 """
 import json
 import re
+import shutil
 import subprocess
 import sys
 import html
@@ -36,6 +37,18 @@ from fontTools.ttLib import TTFont
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate_font import derive_glyph_name_salt, safe_glyph_name  # noqa: E402
+from script_diagnostics import (  # noqa: E402
+    CODE_BACKEND_MISSING,
+    CODE_INPUT_NOT_FOUND,
+    CODE_OUTPUT_UNWRITABLE,
+    CODE_VALIDATION_FAILED,
+    Diagnostics,
+    EXIT_BACKEND,
+    EXIT_INPUT,
+    EXIT_OUTPUT,
+    EXIT_VALIDATION,
+    add_json_result_argument,
+)
 
 # Defaults audit the maxhide build, which is what m15en_for_font.json produces
 # (see packages/core/MANIFEST.json → variants.m15en.font). Override with
@@ -50,14 +63,20 @@ JSON_OUT = Path("/tmp/shieldfont_audit.json")
 # tracks --mapping-id / --glyph-name-salt. The formula itself is imported, never
 # copied, so the two can no longer drift.
 GLYPH_SALT = derive_glyph_name_salt("m15en")
+HB_BACKEND_MISSING = False
 
 
 def hb_shape(text):
     """Return list of glyph names from HarfBuzz shaping."""
-    out = subprocess.run(
-        ["hb-shape", "--no-positions", str(FONT_TTF), text],
-        capture_output=True, text=True,
-    )
+    global HB_BACKEND_MISSING
+    try:
+        out = subprocess.run(
+            ["hb-shape", "--no-positions", str(FONT_TTF), text],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        HB_BACKEND_MISSING = True
+        return None
     if out.returncode != 0:
         return None
     s = out.stdout.strip().lstrip("[").rstrip("]")
@@ -87,8 +106,37 @@ def expected_glyph(source_word):
     return safe_glyph_name(source_word, GLYPH_SALT)
 
 
-def audit():
-    mapping = json.loads(MAPPING_PATH.read_text())
+def audit(diag=None):
+    if not MAPPING_PATH.exists():
+        if diag is not None:
+            diag.fail("mapping input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        print(f"[FAIL] mapping input not found: {MAPPING_PATH}")
+        return 1
+    if not FONT_TTF.exists():
+        if diag is not None:
+            diag.fail("font input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        print(f"[FAIL] font input not found: {FONT_TTF}")
+        return 1
+    if not shutil.which("hb-shape"):
+        if diag is not None:
+            diag.fail("HarfBuzz backend unavailable", stage="backend",
+                      code=CODE_BACKEND_MISSING, exit_code=EXIT_BACKEND)
+            return diag.finish(EXIT_BACKEND, stage="backend", code=CODE_BACKEND_MISSING)
+        print("[FAIL] HarfBuzz backend unavailable: hb-shape not found")
+        return 1
+    try:
+        mapping = json.loads(MAPPING_PATH.read_text())
+    except Exception as exc:
+        if diag is not None:
+            diag.fail("mapping input is invalid", stage="input",
+                      code="input_invalid", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_invalid")
+        print(f"[FAIL] mapping input is invalid: {type(exc).__name__}: {exc}")
+        return 1
     print(f"Mapping: {len(mapping)} directional entries from {MAPPING_PATH.name}")
     print(f"Font:    {FONT_TTF}")
 
@@ -249,29 +297,49 @@ def audit():
     else:
         print(f"[3/3] Composite metrics: all {n_composites} word glyphs have lsb == xMin")
 
-    JSON_OUT.write_text(json.dumps({
-        "summary": {
-            "roundtrip_pass": pass_count, "roundtrip_fail": fail_count,
-            "collision_pass": coll_pass, "collision_fail": coll_fail,
-            "metrics_fail": len(metrics_bad), "composites": n_composites,
-        },
-        "results": results,
-    }, indent=2))
+    try:
+        JSON_OUT.write_text(json.dumps({
+            "summary": {
+                "roundtrip_pass": pass_count, "roundtrip_fail": fail_count,
+                "collision_pass": coll_pass, "collision_fail": coll_fail,
+                "metrics_fail": len(metrics_bad), "composites": n_composites,
+            },
+            "results": results,
+        }, indent=2))
+    except OSError as exc:
+        print(f"[FAIL] could not write audit JSON: {type(exc).__name__}: {exc}")
+        if diag is not None:
+            diag.fail("could not write audit report", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
     print(f"\n  JSON: {JSON_OUT}")
 
     # ------------------------------------------------------------------
     # 4) HTML report — visual side-by-side for human review.
     # ------------------------------------------------------------------
-    write_html_report(mapping, results, pass_count, fail_count, coll_pass, coll_fail)
+    try:
+        write_html_report(mapping, results, pass_count, fail_count, coll_pass, coll_fail)
+    except OSError as exc:
+        print(f"[FAIL] could not write HTML report: {type(exc).__name__}: {exc}")
+        if diag is not None:
+            diag.fail("could not write HTML report", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
     print(f"  HTML: {HTML_OUT}")
 
     if fail_count or coll_fail or metrics_bad:
         print(f"\n[FAIL] {fail_count} round-trip + {coll_fail} collision "
               f"+ {len(metrics_bad)} metrics failures")
+        if diag is not None:
+            diag.fail("audit validation failed", stage="validation",
+                      code=CODE_VALIDATION_FAILED, exit_code=EXIT_VALIDATION)
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
         return 1
     else:
         print(f"\n[OK] All {pass_count + coll_pass} checks passed")
-        return 0
+        return diag.finish(0, stage="complete",
+                           details={"status": "passed"}) if diag is not None else 0
 
 
 def encode_word_preserve_case(w, mp):
@@ -536,7 +604,9 @@ if __name__ == "__main__":
     ap.add_argument("--glyph-name-salt",
                     help="Explicit glyph-name salt — pass the same value you gave "
                          "generate_font.py --glyph-name-salt. Overrides --mapping-id.")
+    add_json_result_argument(ap)
     args = ap.parse_args()
+    diag = Diagnostics(__file__, args.json_out)
 
     # Rebind module globals so hb_shape()/audit() pick up the overrides.
     if args.font:
@@ -547,4 +617,4 @@ if __name__ == "__main__":
         HTML_OUT = Path(args.html_out).resolve()
     GLYPH_SALT = args.glyph_name_salt or derive_glyph_name_salt(args.mapping_id)
 
-    sys.exit(audit())
+    sys.exit(audit(diag))

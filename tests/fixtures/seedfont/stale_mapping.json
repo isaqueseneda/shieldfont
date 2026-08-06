@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "mappingId": "seedfont-task2@fixture",
+    "version": "0.0.0-fixture",
+    "profile": "compatibility",
+    "seed": 7,
+    "subsetId": "fixture-subset-stale",
+    "contentHash": "fixture-content-old"
+  },
+  "alpha": "bravo",
+  "bravo": "alpha"
+}

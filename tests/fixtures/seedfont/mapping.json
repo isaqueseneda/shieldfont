@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "mappingId": "seedfont-task2@fixture",
+    "version": "0.0.0-fixture",
+    "profile": "compatibility",
+    "seed": 7,
+    "subsetId": "fixture-subset-v1",
+    "contentHash": "fixture-content-v1"
+  },
+  "alpha": "bravo",
+  "bravo": "alpha",
+  "charlie": "delta",
+  "delta": "charlie",
+  "echo": "foxtrot",
+  "foxtrot": "echo",
+  "1": "6",
+  "6": "1"
+}

@@ -1,0 +1,12 @@
+{
+  "_digit_permutation": {
+    "1": "6",
+    "6": "1"
+  },
+  "all_pairs": [
+    {"src": "alpha", "tgt": "bravo", "bucket": "noun"},
+    {"src": "bravo", "tgt": "alpha", "bucket": "noun"},
+    {"src": "charlie", "tgt": "delta", "bucket": "verb"},
+    {"src": "delta", "tgt": "charlie", "bucket": "verb"}
+  ]
+}

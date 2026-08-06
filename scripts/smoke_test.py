@@ -108,14 +108,30 @@ def git_ignored(paths: list[Path]) -> set[Path] | None:
         return set()
     queries = [str(p) for p in paths] + [str(p / PROBE) for p in paths]
     try:
-        proc = subprocess.run(["git", "check-ignore", "--stdin"], cwd=ROOT,
-                              input="\n".join(queries),
-                              capture_output=True, text=True)
+        proc = subprocess.run(
+            ["git", "check-ignore", "--stdin"],
+            cwd=ROOT,
+            input="\n".join(queries).encode(),
+            capture_output=True,
+        )
     except OSError:
         return None
     if proc.returncode not in (0, 1):  # 0 = some ignored, 1 = none; 128 = no git
         return None
-    hits = {line for line in proc.stdout.splitlines() if line}
+    # Git quotes absolute Windows paths and may include CRLF in its output.
+    # Normalize both forms so a fresh checkout does not report generated paths
+    # as missing merely because this probe runs on Windows.
+    hits = set()
+    for raw in proc.stdout.splitlines():
+        line = raw.decode(errors="replace").strip()
+        if not line:
+            continue
+        if line.startswith('"') and line.endswith('"'):
+            try:
+                line = json.loads(line)
+            except json.JSONDecodeError:
+                line = line.strip('"')
+        hits.add(line)
     return {p for p in paths if str(p) in hits or str(p / PROBE) in hits}
 
 

@@ -1,0 +1,11 @@
+{
+  "fixture_id": "seedfont-task2-v1",
+  "mapping": "mapping.json",
+  "pairs": "pairs.json",
+  "content": "content.html",
+  "metrics": "metrics.json",
+  "metadata": "metadata.json",
+  "nonce_cases": "nonce_cases.json",
+  "stale_mapping": "stale_mapping.json",
+  "ci_contract": "ci_contract.json"
+}
