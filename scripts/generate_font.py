@@ -57,7 +57,9 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphComponent
 from fontTools.ttLib.tables import otTables
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR.parent
+PROJECT_DIR = Path(
+    os.environ.get("SHIELDFONT_PROJECT_DIR", str(SCRIPT_DIR.parent))
+).resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 from script_diagnostics import (  # noqa: E402
     CODE_BACKEND_MISSING,
@@ -96,7 +98,9 @@ MAPPING_CONTRACT = None
 MAPPING_CASE_FORM = "preserve"
 MAPPING_NONCE_OVERRIDE = None
 MAPPING_BUNDLE_ID = None
-FONT_CACHE_DIR = SCRIPT_DIR / "fonts"
+FONT_CACHE_DIR = Path(
+    os.environ.get("SHIELDFONT_FONT_CACHE_DIR", str(SCRIPT_DIR / "fonts"))
+).resolve()
 OUTPUT_DIR = PROJECT_DIR / "public" / "fonts"
 
 

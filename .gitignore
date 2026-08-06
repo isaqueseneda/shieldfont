@@ -72,5 +72,10 @@ public/fonts/BEFORE-*
 # dir-only pattern cannot match a path that is not there yet.
 scripts/fonts
 
+# Portable Win64 console build output and local PyInstaller work files
+scripts/.portable-build-venv/
+.portable-build/
+dist/
+
 # Local-only working files (never commit) — e.g. RECONCILE-MANIFEST.local.md, TODO-BEFORE-RELEASE.local.md
 *.local.md
