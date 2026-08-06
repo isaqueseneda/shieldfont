@@ -53,9 +53,13 @@ _SAFE_STRING_KEYS = {
     "backend",
     "format",
     "kind",
+    "language_tag",
+    "merge_decision",
+    "normalization_case_id",
     "operation",
     "script",
     "status",
+    "supported_mark_set_id",
 }
 
 

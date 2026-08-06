@@ -7,5 +7,8 @@
   "metadata": "metadata.json",
   "nonce_cases": "nonce_cases.json",
   "stale_mapping": "stale_mapping.json",
-  "ci_contract": "ci_contract.json"
+  "ci_contract": "ci_contract.json",
+  "shape_contract": "shape_contract.json",
+  "unicode_contract": "unicode_contract.json",
+  "feature_contract": "feature_contract.json"
 }

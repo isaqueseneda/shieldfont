@@ -12,8 +12,13 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 import unittest
+from io import BytesIO
+from unittest import mock
 from pathlib import Path
+
+from fontTools.ttLib import TTFont
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +27,7 @@ FIXTURES = ROOT / "tests" / "fixtures" / "seedfont"
 sys.path.insert(0, str(SCRIPTS))
 
 generate_font = importlib.import_module("generate_font")
+shape_run = importlib.import_module("shape_run")
 fix_composite_lsb = importlib.import_module("fix_composite_lsb")
 stamp_font_version = importlib.import_module("stamp_font_version")
 subset_font = importlib.import_module("subset_font")
@@ -111,6 +117,231 @@ class FixtureTests(unittest.TestCase):
             self.assertTrue(path.is_file(), filename)
             self.assertNotIn(path.suffix.lower(), {".ttf", ".otf", ".woff", ".woff2"})
 
+    def test_shape_contract_has_explicit_run_inputs(self):
+        contract = json.loads(
+            (FIXTURES / self.index["shape_contract"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(contract["fixture_id"], "seedfont-task4-v1")
+        self.assertEqual(contract["script"], "latn")
+        self.assertEqual(contract["language"], "dflt")
+        self.assertEqual(
+            shape_run.normalize_features(contract["features"]),
+            {tag: True for tag in contract["features"]},
+        )
+        self.assertEqual(shape_run.normalize_axes(contract["axes"])["wght"], 400.0)
+
+    def test_unicode_contract_covers_nfc_nfd_marks_scripts_and_absent_lang(self):
+        contract = json.loads(
+            (FIXTURES / self.index["unicode_contract"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(contract["fixture_id"], "seedfont-task5-v1")
+        self.assertEqual(
+            unicodedata.normalize("NFC", contract["nfd_cases"][0]), "\u0451"
+        )
+        self.assertEqual(
+            unicodedata.normalize("NFC", contract["nfd_cases"][1]), "\u0439"
+        )
+        self.assertEqual(subset_font.detect_html_language(contract["html_without_lang"]), None)
+        self.assertEqual(
+            subset_font.resolve_html_language(contract["html_without_lang"]), "dflt"
+        )
+        self.assertEqual(contract["languages"], ["RUS", "UKR", "BEL", "SRB"])
+
+    def test_task5_mapping_normalization_rejects_ambiguity_without_text(self):
+        mapping = {
+            "cafe\u0301": "resume",
+            "caf\u00e9": "resume",
+            "a\u0308": "one",
+            "\u00e4": "two",
+        }
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            normalized = generate_font.normalize_mapping(mapping)
+        self.assertEqual(normalized["caf\u00e9"], "resume")
+        self.assertNotIn("\u00e4", normalized)
+        self.assertIn("rejected ambiguous normalized mapping", output.getvalue())
+        self.assertNotIn("cafe", output.getvalue())
+
+    def test_task5_explicit_script_langsys_and_mark_set_are_bounded(self):
+        self.assertEqual(
+            generate_font.parse_script_langsys_specs(
+                ["latn:ENG", "cyrl:RUS", "cyrl:UKR", "cyrl:BEL", "cyrl:SRB", "cyrl:default"]
+            ),
+            {"latn": ["ENG"], "cyrl": ["RUS", "UKR", "BEL", "SRB", None]},
+        )
+        marks, mark_set_id = generate_font.parse_supported_mark_set(
+            explicit_marks="0x301,0x306,0x308"
+        )
+        self.assertEqual(marks, {0x301, 0x306, 0x308})
+        self.assertTrue(mark_set_id.startswith("custom-"))
+        with self.assertRaises(ValueError):
+            generate_font.parse_supported_mark_set(
+                explicit_marks=",".join(f"{cp:X}" for cp in range(300))
+            )
+
+    def test_task5_supported_marks_do_not_join_unsupported_boundaries(self):
+        lookup = mock.Mock(LookupFlag=0)
+        generate_font._set_lookup_mark_filter(lookup, 3)
+        self.assertEqual(lookup.LookupFlag, 0x10)
+        self.assertEqual(lookup.MarkFilteringSet, 3)
+        self.assertEqual(
+            list(subset_font.tokenize("a\u0301\u0323 b\u036f")),
+            [unicodedata.normalize("NFC", "a\u0301\u0323"), "b\u036f"],
+        )
+        self.assertEqual(list(subset_font.tokenize("c\u1ab0")), ["c"])
+
+    def test_task5_scoped_ligature_and_gdef_tables_serialize(self):
+        font = TTFont(ROOT / "packages" / "font" / "optik-n.woff2")
+        cmap = font.getBestCmap()
+        gpos_count = len(font["GPOS"].table.LookupList.Lookup)
+        locl_present = any(
+            record.FeatureTag == "locl"
+            for record in font["GSUB"].table.FeatureList.FeatureRecord
+        )
+        shaper = mock.Mock()
+        shaper.shape.return_value = mock.Mock(
+            glyphs=(
+                shape_run.PositionedGlyph(font.getGlyphID(cmap[ord("a")]), 0, 500, 0, 0, 0),
+                shape_run.PositionedGlyph(font.getGlyphID(cmap[ord("b")]), 1, 500, 0, 0, 0),
+            )
+        )
+        self.assertTrue(
+            generate_font.create_composite_glyph(
+                font, "ab", "word.task5", shaper=shaper
+            )
+        )
+        generate_font.build_gsub_word_boundary_ligatures(
+            font,
+            {"word.task5": [cmap[ord("c")], cmap[ord("d")]]},
+            supported_marks={0x301, 0x306, 0x308},
+            script_langsys={"latn": [None]},
+        )
+        output = BytesIO()
+        font.save(output)
+        self.assertGreater(len(output.getvalue()), 0)
+        self.assertEqual(font["GDEF"].table.Version, 0x00010002)
+        self.assertEqual(len(font["GPOS"].table.LookupList.Lookup), gpos_count)
+        self.assertEqual(
+            any(
+                record.FeatureTag == "locl"
+                for record in font["GSUB"].table.FeatureList.FeatureRecord
+            ),
+            locl_present,
+        )
+
+    def test_task6_feature_contract_and_caret_validation(self):
+        contract = json.loads(
+            (FIXTURES / self.index["feature_contract"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(contract["fixture_id"], "seedfont-task6-v1")
+        self.assertEqual(
+            generate_font.SOURCE_FEATURE_TAGS,
+            tuple(contract["required_source"]),
+        )
+        self.assertEqual(
+            generate_font.RESTORATION_FEATURE_TAG,
+            contract["required_restoration"],
+        )
+        self.assertEqual(
+            generate_font.OPTIONAL_FEATURE_TAG,
+            contract["optional"][0],
+        )
+        self.assertEqual(
+            generate_font._validated_caret_coordinates(
+                [0, 200, 200, 500, 40000, -40000], 500
+            ),
+            ([0, 200, 500], 2),
+        )
+        self.assertEqual(
+            generate_font._validated_caret_coordinates([0, -20, -20], -20),
+            ([0, -20], 0),
+        )
+
+    def test_task6_staged_lookup_order_carets_and_optional_features(self):
+        font = TTFont(ROOT / "packages" / "font" / "optik-n.woff2")
+        font.flavor = None
+        cmap = font.getBestCmap()
+        shaper = mock.Mock()
+        shaper.shape.return_value = mock.Mock(
+            glyphs=(
+                shape_run.PositionedGlyph(
+                    font.getGlyphID(cmap[ord("a")]), 0, 200, 0, -15, 0
+                ),
+                shape_run.PositionedGlyph(
+                    font.getGlyphID(cmap[ord("b")]), 1, 100, 0, 0, 10
+                ),
+                shape_run.PositionedGlyph(
+                    font.getGlyphID(cmap[ord("a")]), 2, 300, 0, 5, -5
+                ),
+            )
+        )
+        self.assertTrue(
+            generate_font.create_composite_glyph(
+                font, "aba", "word.task6", shaper=shaper
+            )
+        )
+        generate_font.build_gsub_word_boundary_ligatures(
+            font,
+            {"word.task6": [cmap[ord("c")], cmap[ord("d")]]},
+            supported_marks={0x301},
+        )
+        gdef = font["GDEF"].table
+        lig_carets = gdef.LigCaretList
+        index = lig_carets.Coverage.glyphs.index("word.task6")
+        caret = lig_carets.LigGlyph[index]
+        self.assertEqual(caret.CaretCount, 2)
+        self.assertEqual(
+            [item.Coordinate for item in caret.CaretValue],
+            [200, 300],
+        )
+        self.assertTrue(all(item.Format == 1 for item in caret.CaretValue))
+
+        gsub = font["GSUB"].table
+        records = {
+            record.FeatureTag: record.Feature
+            for record in gsub.FeatureList.FeatureRecord
+        }
+        self.assertIn("ccmp", records)
+        self.assertIn("rlig", records)
+        self.assertEqual(len(records["ccmp"].LookupListIndex), 1)
+        self.assertEqual(len(records["rlig"].LookupListIndex), 2)
+        self.assertLess(
+            gsub.FeatureList.FeatureRecord.index(
+                next(
+                    item for item in gsub.FeatureList.FeatureRecord
+                    if item.FeatureTag == "ccmp"
+                )
+            ),
+            gsub.FeatureList.FeatureRecord.index(
+                next(
+                    item for item in gsub.FeatureList.FeatureRecord
+                    if item.FeatureTag == "rlig"
+                )
+            ),
+        )
+        lookup_ids = records["ccmp"].LookupListIndex + records["rlig"].LookupListIndex
+        self.assertEqual(
+            [gsub.LookupList.Lookup[i].LookupType for i in lookup_ids],
+            [4, 6, 6],
+        )
+
+        output = BytesIO()
+        font.save(output)
+        runner = shape_run.ShapeRunner(
+            output.getvalue(),
+            features="ccmp,locl,rlig,-calt,-dlig,-liga,-clig",
+            strict=True,
+        )
+        custom_gid = font.getGlyphID("word.task6")
+        self.assertEqual(
+            [item.glyph_id for item in runner.shape(" cd ").glyphs],
+            [font.getGlyphID("space"), custom_gid, font.getGlyphID("space")],
+        )
+        self.assertNotIn(
+            custom_gid,
+            [item.glyph_id for item in runner.shape("xcd y").glyphs],
+        )
+
     def test_run_boundaries_punctuation_and_adjacent_words(self):
         raw = (FIXTURES / self.index["content"]).read_text(encoding="utf-8")
         text = subset_font.extract_text(raw, "html")
@@ -153,6 +384,84 @@ class FixtureTests(unittest.TestCase):
         hmtx["word.fixture"] = (m["advance"], m["damaged_lsb"])
         damaged = fix_composite_lsb.scan(font)
         self.assertEqual(damaged, {"word.fixture": (m["damaged_lsb"], m["x_min"])})
+
+    def test_positioned_run_uses_glyph_ids_offsets_and_shaped_advance(self):
+        glyf = {
+            "a": _Glyph(20, 60),
+            "b": _Glyph(5, 45),
+        }
+        font = _Font(glyf, {"a": (100, 20), "b": (80, 5)}, {})
+        shaper = mock.Mock()
+        shaper.shape.return_value = mock.Mock(
+            glyphs=(
+                shape_run.PositionedGlyph(0, 0, 100, 0, 0, 0),
+                shape_run.PositionedGlyph(1, 1, 80, 0, -10, 20),
+            )
+        )
+
+        self.assertTrue(
+            generate_font.create_composite_glyph(
+                font, "source", "word.positioned", shaper=shaper
+            )
+        )
+        glyph = glyf["word.positioned"]
+        self.assertEqual((glyph.xMin, glyph.yMin, glyph.xMax, glyph.yMax), (20, 0, 135, 120))
+        self.assertEqual(font["hmtx"]["word.positioned"], (180, 20))
+        self.assertEqual([(c.glyphName, c.x, c.y) for c in glyph.components],
+                         [("a", 0, 0), ("b", 90, 20)])
+
+    def test_positioned_run_rejects_signed_bounds_and_unsigned_advance_overflow(self):
+        font = _Font({"a": _Glyph(0, 10)}, {"a": (1, 0)}, {})
+        too_far = mock.Mock()
+        too_far.shape.return_value = mock.Mock(
+            glyphs=(shape_run.PositionedGlyph(0, 0, 1, 0, 40000, 0),)
+        )
+        with self.assertRaises(ValueError):
+            generate_font.create_composite_glyph(
+                font, "a", "word.bounds", shaper=too_far
+            )
+
+        too_wide = mock.Mock()
+        too_wide.shape.return_value = mock.Mock(
+            glyphs=(shape_run.PositionedGlyph(0, 0, 65536, 0, 0, 0),)
+        )
+        with self.assertRaises(ValueError):
+            generate_font.create_composite_glyph(
+                font, "a", "word.advance", shaper=too_wide
+            )
+
+    def test_missing_positioned_glyph_fails_without_mutating_font(self):
+        font = _Font({"a": _Glyph(0, 10)}, {"a": (1, 0)}, {})
+        shaper = mock.Mock()
+        shaper.shape.return_value = mock.Mock(
+            glyphs=(shape_run.PositionedGlyph(99, 0, 1, 0, 0, 0),)
+        )
+        self.assertFalse(
+            generate_font.create_composite_glyph(
+                font, "a", "word.missing", shaper=shaper
+            )
+        )
+        self.assertNotIn("word.missing", font["glyf"])
+
+    def test_parity_mismatch_is_detected_in_strict_mode(self):
+        primary = (
+            shape_run.PositionedGlyph(0, 0, 10, 0, 0, 0),
+        )
+        oracle = (
+            shape_run.PositionedGlyph(1, 0, 10, 0, 0, 0),
+        )
+        with mock.patch.object(shape_run, "_shape_primary", return_value=primary), \
+                mock.patch.object(shape_run, "hb_shape_oracle", return_value=oracle):
+            runner = shape_run.ShapeRunner(
+                b"fixture", parity_oracle=True, strict=True, oracle_font="fixture.ttf"
+            )
+            with self.assertRaises(shape_run.ShapeParityError):
+                runner.shape("safe")
+
+    def test_strict_runner_fails_closed_without_pinned_primary(self):
+        with mock.patch.object(shape_run, "hb", None):
+            with self.assertRaises(shape_run.ShapeBackendError):
+                shape_run.ShapeRunner(b"fixture", strict=True)
 
     def test_metadata_and_version_values_are_preserved(self):
         metadata = json.loads(

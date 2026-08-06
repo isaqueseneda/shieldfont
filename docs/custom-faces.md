@@ -30,6 +30,50 @@ Outputs land in `public/fonts/` as `.ttf`, `.woff2`, and a ready `@font-face` CS
 
 The pairing rule from the mappings guide applies unchanged here: a page renders correctly only under a font built from the same mapping that encoded it. Changing the base typeface never changes the pairs; changing the mapping always requires a new font build.
 
+### Scripts, languages, and combining marks
+
+The builder normalizes mapping words to Unicode NFC and keeps the base
+`ccmp`/`locl`, GPOS, and GDEF data intact. For a multilingual font, restrict
+the generated lookup activation explicitly:
+
+```bash
+python3 scripts/generate_font.py ... \
+  --script-langsys latn:ENG \
+  --script-langsys cyrl:RUS \
+  --script-langsys cyrl:UKR \
+  --script-langsys cyrl:BEL \
+  --script-langsys cyrl:SRB \
+  --supported-mark-set basic-mn-v1
+```
+
+Use `--script-langsys-map scopes.json` for a JSON object/list of the same
+selectors. Three-letter OpenType language tags are serialized with their
+required trailing byte. Supported combining marks are bounded and filtered
+through GDEF; unsupported marks are intentionally a shaping boundary. When
+the HTML document has no `lang`, content tooling falls back to `dflt` rather
+than guessing a language.
+
+### Feature order and compatibility
+
+Generated substitutions use three explicit stages:
+
+1. **Required source stage**: `ccmp` is preferred, with `locl` as the
+   compatibility fallback when a base face has no `ccmp` record. The generated
+   fire lookups are inserted before the base face's lookups, preserving the
+   placement used by Word, WebKit, and other clients that apply compatibility
+   features early.
+2. **Required restoration stage**: `rlig` runs after the fire stage. Its class
+   and boundary lookups invoke the internal `MultipleSubst` reversal lookup,
+   so the order is always fire -> class/boundary check -> restore.
+3. **Optional stage**: `calt` (and discretionary `dlig`/`liga`) is not required
+   by ShieldFont. Disabling optional ligatures does not disable the generated
+   word rules.
+
+The builder prints the feature and lookup IDs, compatibility fallback choice,
+subtable byte budgets, and GDEF caret counts/ranges without printing mapping
+words. This makes an audit able to compare engines while keeping diagnostics
+safe.
+
 ---
 
 ## Shrinking the font to what your site actually uses

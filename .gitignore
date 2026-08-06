@@ -37,6 +37,7 @@ public/fonts/*
 
 # Local debug/QA tooling output — never meant to ship, not evidence
 public/*.html
+public/*.json
 
 # Claude Code session artifacts
 .claude/

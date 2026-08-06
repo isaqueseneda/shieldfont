@@ -185,6 +185,7 @@ _STRING_RE = re.compile(
     re.S,
 )
 _JSX_TEXT_RE = re.compile(r">([^<>{}]+)<")
+_HTML_LANG_RE = re.compile(r"<html\b[^>]*\blang\s*=\s*(['\"])(.*?)\1", re.I | re.S)
 
 
 def _strip_skip_tags(text):
@@ -222,9 +223,43 @@ def extract_text(raw, fmt):
     raise ValueError(f"unknown format {fmt!r}")
 
 
+def detect_html_language(raw):
+    """Return the declared HTML language, or None when it is absent/invalid."""
+    match = _HTML_LANG_RE.search(raw)
+    if not match:
+        return None
+    value = match.group(2).strip()
+    return value or None
+
+
+def resolve_html_language(raw, default="dflt"):
+    """Use the declared language when present, otherwise the safe default."""
+    return detect_html_language(raw) or default
+
+
 def tokenize(text):
-    """Mirror the encoder exactly: NFC, Unicode letter runs, lowercased."""
-    return (m.group(0).lower() for m in WORD_RE.finditer(unicodedata.normalize("NFC", text)))
+    """Mirror the encoder: NFC, letter runs, attached combining marks."""
+    normalized = unicodedata.normalize("NFC", text)
+    supported_marks = set(range(0x0300, 0x0370))
+    tokens = []
+    index = 0
+    while index < len(normalized):
+        if not normalized[index].isalpha():
+            index += 1
+            continue
+        end = index + 1
+        while end < len(normalized):
+            char = normalized[end]
+            if char.isalpha() or (
+                ord(char) in supported_marks
+                and unicodedata.category(char).startswith("M")
+            ):
+                end += 1
+            else:
+                break
+        tokens.append(normalized[index:end].lower())
+        index = end
+    return iter(tokens)
 
 
 def resolve_inputs(patterns):
