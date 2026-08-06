@@ -24,7 +24,7 @@ COMMANDS = {
     "audit-font": "audit_font.py",
 }
 
-USAGE = """ShieldFont portable console utility
+USAGE = r"""ShieldFont portable console utility
 
 Usage:
   shieldfont-cli.exe generate_font [generate_font options]
@@ -43,6 +43,33 @@ Commands:
 Run '<command> --help' for the complete parameter descriptions.
 The utility is self-contained and does not require Python, Node.js, or an
 installed ShieldFont checkout at runtime.
+
+Examples:
+  # Basic build: turn a local TrueType font into TTF, WOFF2, and CSS.
+  shieldfont-cli.exe generate_font --base-path .\fonts\Source.ttf `
+    --name "ShieldFont Demo" --prefix demo
+
+  # Reseed the mapping for a reproducible build or document revision.
+  shieldfont-cli.exe reseed_mapping --seed 2026 `
+    --document-nonce demo-document-2026 --out .\build\mapping.json
+
+  # Audit a generated download-tier TTF and emit an HTML/JSON report.
+  shieldfont-cli.exe audit_font --font .\public\fonts\demo.ttf `
+    --mapping .\scripts\m15en_for_font.json --html-out .\public\audit.html `
+    --json-out .\build\audit.json
+
+  # Advanced release build: pin the source, mapping, identity, shaping
+  # backend, and GSUB policy for deterministic publication.
+  shieldfont-cli.exe generate_font `
+    --base-url https://example.invalid/Source-Regular.ttf `
+    --cache-name Source-Regular.ttf --mapping-path .\mapping.json `
+    --document-nonce demo-document-2026 --tenant-id demo-tenant `
+    --deterministic --release --gsub-optimization format2
+
+Replace demo paths, URLs, seeds, nonces, and tenant identifiers with
+project-specific values. The final example requests Format 2 evaluation;
+the builder still selects its deterministic Format 3 fallback until shaping
+validation approves Format 2.
 """
 
 

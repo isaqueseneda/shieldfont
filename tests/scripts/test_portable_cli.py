@@ -30,6 +30,8 @@ class PortableCliTests(unittest.TestCase):
         self.assertIn("generate_font", result.stdout)
         self.assertIn("reseed_mapping", result.stdout)
         self.assertIn("audit_font", result.stdout)
+        self.assertIn("Advanced release build", result.stdout)
+        self.assertIn("--document-nonce", result.stdout)
 
     def test_generate_help_is_forwarded(self):
         result = self.run_cli("generate_font", "--help")
