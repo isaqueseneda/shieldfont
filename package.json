@@ -11,6 +11,7 @@
   "scripts": {
     "build": "npm run -w @shieldfont/core build && npm run -w @shieldfont/react build",
     "test": "npm run -w @shieldfont/core test && npm run -w @shieldfont/react test",
+    "test:scripts": "python -m unittest discover -s tests/scripts -p \"test_*.py\"",
     "generate-inter": "python3 scripts/generate_font.py --base-url https://raw.githubusercontent.com/rsms/inter/v4.1/fonts/ttf/Inter-Regular.ttf --cache-name Inter-Regular.ttf --name 'ShieldFont' --prefix shieldfont",
     "test:a11y": "node scripts/a11y-audit.mjs",
     "test:hydration": "node scripts/hydration-audit.mjs",

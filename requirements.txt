@@ -1,3 +1,5 @@
 fonttools[woff]
 brotli
 requests
+# Keep the in-process shaping backend in the tested HarfBuzz ABI range.
+uharfbuzz>=0.56,<0.57

@@ -14,7 +14,7 @@ Then run a substring-collision battery: for each short pair (≤3 chars) like
 'iPhone', 'wonder') and confirm the short pair does NOT fire inside them.
 
 Outputs:
-  - /tmp/shieldfont_audit.json — machine-readable PASS/FAIL per pair
+  - public/audit.json — machine-readable PASS/FAIL per pair
   - public/audit.html — human-readable side-by-side report (renders via the
     actual font in the browser; you can verify with your own eyes)
 
@@ -24,7 +24,9 @@ Usage:
 Requires: fontTools, hb-shape on PATH (brew install harfbuzz).
 """
 import json
+import hashlib
 import re
+import shutil
 import subprocess
 import sys
 import html
@@ -35,7 +37,31 @@ from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate_font import derive_glyph_name_salt, safe_glyph_name  # noqa: E402
+from generate_font import (  # noqa: E402
+    OPTIONAL_FEATURE_TAG,
+    RESTORATION_FEATURE_TAG,
+    SOURCE_FEATURE_TAGS,
+    derive_glyph_name_salt,
+    normalize_ot_tag,
+    safe_glyph_name,
+)
+from shape_run import ShapeBackendError, ShapeRunner  # noqa: E402
+from script_diagnostics import (  # noqa: E402
+    CODE_BACKEND_MISSING,
+    CODE_INPUT_NOT_FOUND,
+    CODE_OUTPUT_UNWRITABLE,
+    CODE_VALIDATION_FAILED,
+    Diagnostics,
+    EXIT_BACKEND,
+    EXIT_INPUT,
+    EXIT_OUTPUT,
+    EXIT_VALIDATION,
+    add_json_result_argument,
+)
+from artifact_contract import (  # noqa: E402
+    emit_canonical_artifacts,
+    private_mapping_payload,
+)
 
 # Defaults audit the maxhide build, which is what m15en_for_font.json produces
 # (see packages/core/MANIFEST.json → variants.m15en.font). Override with
@@ -43,21 +69,38 @@ from generate_font import derive_glyph_name_salt, safe_glyph_name  # noqa: E402
 FONT_TTF = ROOT / "public/fonts/shieldfont-maxhide.ttf"
 MAPPING_PATH = ROOT / "scripts/m15en_for_font.json"
 HTML_OUT = ROOT / "public/audit.html"
-JSON_OUT = Path("/tmp/shieldfont_audit.json")
+JSON_OUT = ROOT / "public" / "audit.json"
 
 # The glyph-name hash is salted per mapping (see generate_font.GLYPH_NAME_SALT).
 # expected_glyph() below must use the SAME salt the font was built with, so this
 # tracks --mapping-id / --glyph-name-salt. The formula itself is imported, never
 # copied, so the two can no longer drift.
 GLYPH_SALT = derive_glyph_name_salt("m15en")
+HB_BACKEND_MISSING = False
+HB_SCRIPT = "latn"
+HB_LANGUAGE = "dflt"
+HB_FEATURES = ",".join((*SOURCE_FEATURE_TAGS, RESTORATION_FEATURE_TAG, "liga", "kern"))
+ENGINE_RUNNER = None
+ENGINE_GLYPH_ORDER = None
+ARTIFACT_DIR = None
+WEB_FONT = None
 
 
 def hb_shape(text):
     """Return list of glyph names from HarfBuzz shaping."""
-    out = subprocess.run(
-        ["hb-shape", "--no-positions", str(FONT_TTF), text],
-        capture_output=True, text=True,
-    )
+    global HB_BACKEND_MISSING
+    try:
+        out = subprocess.run(
+            [
+                "hb-shape", "--no-positions", "--script", HB_SCRIPT,
+                "--language", HB_LANGUAGE, "--features", HB_FEATURES,
+                str(FONT_TTF), text,
+            ],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        HB_BACKEND_MISSING = True
+        return None
     if out.returncode != 0:
         return None
     s = out.stdout.strip().lstrip("[").rstrip("]")
@@ -87,14 +130,164 @@ def expected_glyph(source_word):
     return safe_glyph_name(source_word, GLYPH_SALT)
 
 
-def audit():
-    mapping = json.loads(MAPPING_PATH.read_text())
+def feature_stage_diagnostics(font):
+    """Return bounded feature/lookup IDs without exposing mapping text."""
+    gsub = getattr(getattr(font.get("GSUB"), "table", None), "FeatureList", None)
+    lookup_list = getattr(
+        getattr(getattr(font.get("GSUB"), "table", None), "LookupList", None),
+        "Lookup",
+        [],
+    ) or []
+    if gsub is None:
+        return {"features": [], "lookups": len(lookup_list)}
+    features = [
+        {
+            "id": index,
+            "tag": record.FeatureTag,
+            "lookups": list(record.Feature.LookupListIndex or []),
+        }
+        for index, record in enumerate(gsub.FeatureRecord or [])
+        if record.FeatureTag in set(SOURCE_FEATURE_TAGS) | {
+            RESTORATION_FEATURE_TAG,
+            OPTIONAL_FEATURE_TAG,
+        }
+    ]
+    return {"features": features, "lookups": len(lookup_list)}
+
+
+def validate_gdef_carets(font):
+    """Validate generated GDEF caret counts and signed coordinate ranges."""
+    gdef = getattr(font.get("GDEF"), "table", None)
+    lig_list = getattr(gdef, "LigCaretList", None)
+    if lig_list is None:
+        return {"status": "unavailable", "glyphs": 0, "carets": 0, "invalid": 0}
+    coverage = list(getattr(getattr(lig_list, "Coverage", None), "glyphs", []) or [])
+    lig_glyphs = list(getattr(lig_list, "LigGlyph", []) or [])
+    invalid = 0
+    carets = 0
+    values = []
+    glyph_order = set(font.getGlyphOrder())
+    for glyph_name, lig_glyph in zip(coverage, lig_glyphs):
+        caret_values = list(getattr(lig_glyph, "CaretValue", []) or [])
+        declared = int(getattr(lig_glyph, "CaretCount", len(caret_values)) or 0)
+        if glyph_name not in glyph_order or declared != len(caret_values):
+            invalid += 1
+        advance = 0
+        try:
+            advance = int(font["hmtx"][glyph_name][0])
+        except (KeyError, TypeError, IndexError):
+            invalid += 1
+        lower = min(0, advance)
+        upper = max(0, advance)
+        previous = None
+        for caret in caret_values:
+            if getattr(caret, "Format", None) != 1:
+                invalid += 1
+                continue
+            coordinate = int(getattr(caret, "Coordinate", 0))
+            if coordinate < -32768 or coordinate > 32767:
+                invalid += 1
+            if coordinate < lower or coordinate > upper:
+                invalid += 1
+            if previous == coordinate:
+                invalid += 1
+            previous = coordinate
+            values.append(coordinate)
+            carets += 1
+    return {
+        "status": "valid" if invalid == 0 else "invalid",
+        "glyphs": len(coverage),
+        "carets": carets,
+        "invalid": invalid,
+        "minimum": min(values) if values else None,
+        "maximum": max(values) if values else None,
+    }
+
+
+def compare_engines(text, expected_names):
+    """Compare the pinned in-process engine with hb-shape without logging text."""
+    global ENGINE_RUNNER, ENGINE_GLYPH_ORDER
+    if ENGINE_RUNNER is None:
+        try:
+            ENGINE_RUNNER = ShapeRunner(
+                FONT_TTF,
+                script=HB_SCRIPT,
+                language=HB_LANGUAGE,
+                features=HB_FEATURES,
+                strict=False,
+            )
+            ENGINE_GLYPH_ORDER = TTFont(str(FONT_TTF), lazy=False).getGlyphOrder()
+        except (ShapeBackendError, OSError, ValueError):
+            ENGINE_RUNNER = False
+    if not ENGINE_RUNNER:
+        return "unavailable"
+    try:
+        shaped = ENGINE_RUNNER.shape(text)
+        names = [ENGINE_GLYPH_ORDER[item.glyph_id] for item in shaped.glyphs]
+    except (OSError, ValueError, IndexError, ShapeBackendError):
+        return "error"
+    return "match" if names == expected_names else "mismatch"
+
+
+def audit(diag=None):
+    if not MAPPING_PATH.exists():
+        if diag is not None:
+            diag.fail("mapping input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        print(f"[FAIL] mapping input not found: {MAPPING_PATH}")
+        return 1
+    if not FONT_TTF.exists():
+        if diag is not None:
+            diag.fail("font input not found", stage="input",
+                      code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        print(f"[FAIL] font input not found: {FONT_TTF}")
+        return 1
+    if not shutil.which("hb-shape"):
+        if diag is not None:
+            diag.fail("HarfBuzz backend unavailable", stage="backend",
+                      code=CODE_BACKEND_MISSING, exit_code=EXIT_BACKEND)
+            return diag.finish(EXIT_BACKEND, stage="backend", code=CODE_BACKEND_MISSING)
+        print("[FAIL] HarfBuzz backend unavailable: hb-shape not found")
+        return 1
+    try:
+        raw_mapping = json.loads(MAPPING_PATH.read_text())
+        mapping = {
+            str(source): target
+            for source, target in raw_mapping.items()
+            if not str(source).startswith("_") and isinstance(target, str)
+        }
+    except Exception as exc:
+        if diag is not None:
+            diag.fail("mapping input is invalid", stage="input",
+                      code="input_invalid", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_invalid")
+        print(f"[FAIL] mapping input is invalid: {type(exc).__name__}: {exc}")
+        return 1
     print(f"Mapping: {len(mapping)} directional entries from {MAPPING_PATH.name}")
     print(f"Font:    {FONT_TTF}")
+    print(
+        f"Shaping: script_tag={HB_SCRIPT} language_tag={HB_LANGUAGE} "
+        f"features={HB_FEATURES} normalization=NFC"
+    )
+    audit_font = TTFont(str(FONT_TTF), lazy=False)
+    stage_info = feature_stage_diagnostics(audit_font)
+    stage_text = ";".join(
+        f"{item['tag']}#{item['id']}={item['lookups']}"
+        for item in stage_info["features"]
+    ) or "none"
+    print(
+        f"[OK] Feature/lookup IDs: {stage_text} "
+        f"lookup_count={stage_info['lookups']}"
+    )
 
     results = []
     pass_count = 0
     fail_count = 0
+    engine_matches = 0
+    engine_mismatches = 0
+    engine_unavailable = 0
 
     # ------------------------------------------------------------------
     # 1) Every mapping entry should round-trip in three case variants.
@@ -135,6 +328,14 @@ def audit():
                 continue
             middle = [g for g in glyphs if g != "space"]
             ok = (len(middle) == 1 and middle[0] == want_glyph)
+            if engine_matches + engine_mismatches + engine_unavailable < 3:
+                comparison = compare_engines(probe, glyphs)
+                if comparison == "match":
+                    engine_matches += 1
+                elif comparison == "mismatch":
+                    engine_mismatches += 1
+                else:
+                    engine_unavailable += 1
             results.append({
                 "kind": "roundtrip", "case": case_label,
                 "source": source, "target": target, "probe": probe_text,
@@ -227,7 +428,7 @@ def audit():
     #    why shaping can pass while the browser render is visibly wrong.
     # ------------------------------------------------------------------
     metrics_bad = []
-    font = TTFont(str(FONT_TTF), lazy=False)
+    font = audit_font
     glyf, hmtx = font["glyf"], font["hmtx"]
     for gname in font.getGlyphOrder():
         glyph = glyf[gname]
@@ -242,6 +443,23 @@ def audit():
             })
     results.extend(metrics_bad)
     n_composites = sum(1 for g in font.getGlyphOrder() if glyf[g].isComposite())
+    gdef = font.get("GDEF")
+    if gdef is not None:
+        class_defs = getattr(getattr(gdef.table, "GlyphClassDef", None), "classDefs", {}) or {}
+        mark_count = sum(1 for value in class_defs.values() if value == 3)
+        mark_sets = getattr(getattr(gdef.table, "MarkGlyphSetsDef", None), "MarkSetCount", 0) or 0
+        print(f"[..] GDEF marks: classified={mark_count} supported_mark_sets={mark_sets}")
+    caret_info = validate_gdef_carets(font)
+    print(
+        f"[OK] GDEF LigatureCaretList: status={caret_info['status']} "
+        f"glyphs={caret_info['glyphs']} carets={caret_info['carets']} "
+        f"range={caret_info.get('minimum', 'none')}.."
+        f"{caret_info.get('maximum', 'none')} invalid={caret_info['invalid']}"
+    )
+    print(
+        f"[OK] Engine comparison: match={engine_matches} "
+        f"mismatch={engine_mismatches} unavailable={engine_unavailable}"
+    )
     if metrics_bad:
         worst = max(m["shaved"] for m in metrics_bad)
         print(f"[3/3] Composite metrics: {len(metrics_bad)} of {n_composites} word "
@@ -249,29 +467,117 @@ def audit():
     else:
         print(f"[3/3] Composite metrics: all {n_composites} word glyphs have lsb == xMin")
 
-    JSON_OUT.write_text(json.dumps({
-        "summary": {
-            "roundtrip_pass": pass_count, "roundtrip_fail": fail_count,
-            "collision_pass": coll_pass, "collision_fail": coll_fail,
-            "metrics_fail": len(metrics_bad), "composites": n_composites,
-        },
-        "results": results,
-    }, indent=2))
+    public_audit_payload = {
+            "schema": "shieldfont.audit-public.v1",
+            "privacy": "verification",
+            "summary": {
+                "roundtrip_pass": pass_count, "roundtrip_fail": fail_count,
+                "collision_pass": coll_pass, "collision_fail": coll_fail,
+                "metrics_fail": len(metrics_bad), "composites": n_composites,
+                "caret_status": caret_info["status"],
+                "caret_count": caret_info["carets"],
+                "caret_invalid": caret_info["invalid"],
+                "engine_match": engine_matches,
+                "engine_mismatch": engine_mismatches,
+                "engine_unavailable": engine_unavailable,
+            },
+            "feature_stages": stage_info,
+            "result_count": len(results),
+        }
+    try:
+        JSON_OUT.write_text(json.dumps(public_audit_payload, indent=2, sort_keys=True) + "\n")
+    except OSError as exc:
+        print(f"[FAIL] could not write audit JSON: {type(exc).__name__}: {exc}")
+        if diag is not None:
+            diag.fail("could not write audit report", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
     print(f"\n  JSON: {JSON_OUT}")
+
+    if ARTIFACT_DIR is not None:
+        web_path = Path(WEB_FONT) if WEB_FONT else FONT_TTF.with_suffix(".woff2")
+        if not web_path.exists():
+            print(f"[FAIL] canonical artifact web font not found: {web_path.name}")
+            if diag is not None:
+                diag.fail("canonical artifact web font not found", stage="input",
+                          code=CODE_INPUT_NOT_FOUND, exit_code=EXIT_INPUT)
+                return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+            return 1
+        private = private_mapping_payload(mapping)
+        private["audit"] = {
+            "summary": public_audit_payload["summary"],
+            "feature_stages": stage_info,
+            "results": results,
+        }
+        canonical_root = Path(ARTIFACT_DIR)
+        canonical_root.mkdir(parents=True, exist_ok=True)
+        emit_canonical_artifacts(
+            canonical_root,
+            mapping=mapping,
+            audit_font=FONT_TTF,
+            web_font=web_path,
+            audit_payload=private,
+            shaping={
+                "status": "passed" if not (fail_count or coll_fail or metrics_bad) else "failed",
+                "checks": public_audit_payload["summary"],
+                "feature_stages": stage_info,
+            },
+            performance={
+                "mapping_pairs": len(mapping),
+                "font_bytes": FONT_TTF.stat().st_size,
+                "roundtrip_checks": rt_total,
+            },
+        )
+        print("[OK] Canonical artifacts: role=public/private/verification")
 
     # ------------------------------------------------------------------
     # 4) HTML report — visual side-by-side for human review.
     # ------------------------------------------------------------------
-    write_html_report(mapping, results, pass_count, fail_count, coll_pass, coll_fail)
+    try:
+        write_html_report(mapping, results, pass_count, fail_count, coll_pass, coll_fail)
+    except OSError as exc:
+        print(f"[FAIL] could not write HTML report: {type(exc).__name__}: {exc}")
+        if diag is not None:
+            diag.fail("could not write HTML report", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
     print(f"  HTML: {HTML_OUT}")
 
-    if fail_count or coll_fail or metrics_bad:
+    if fail_count or coll_fail or metrics_bad or caret_info["invalid"]:
         print(f"\n[FAIL] {fail_count} round-trip + {coll_fail} collision "
-              f"+ {len(metrics_bad)} metrics failures")
+              f"+ {len(metrics_bad)} metrics + {caret_info['invalid']} caret failures")
+        if diag is not None:
+            diag.fail(
+                "audit validation failed",
+                stage="validation",
+                code=CODE_VALIDATION_FAILED,
+                details={
+                    "feature_count": len(stage_info["features"]),
+                    "lookup_count": stage_info["lookups"],
+                    "caret_count": caret_info["carets"],
+                    "caret_invalid": caret_info["invalid"],
+                    "engine_match": engine_matches,
+                    "engine_mismatch": engine_mismatches,
+                },
+                exit_code=EXIT_VALIDATION,
+            )
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
         return 1
     else:
         print(f"\n[OK] All {pass_count + coll_pass} checks passed")
-        return 0
+        return diag.finish(
+            0,
+            stage="complete",
+            details={
+                "status": "passed",
+                "feature_count": len(stage_info["features"]),
+                "lookup_count": stage_info["lookups"],
+                "caret_count": caret_info["carets"],
+                "engine_match": engine_matches,
+                "engine_mismatch": engine_mismatches,
+            },
+        ) if diag is not None else 0
 
 
 def encode_word_preserve_case(w, mp):
@@ -391,8 +697,9 @@ def write_html_report(mapping, results, rt_pass, rt_fail, coll_pass, coll_fail):
             f"</tr>"
         )
 
-    import time
-    cache_bust = str(int(time.time()))
+    cache_bust = hashlib.sha256(
+        json.dumps(sorted(mapping.items()), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()[:12]
     # The report renders the font it actually audited, whatever --font pointed at.
     font_stem = FONT_TTF.stem
     html_body = f"""<!DOCTYPE html>
@@ -536,7 +843,17 @@ if __name__ == "__main__":
     ap.add_argument("--glyph-name-salt",
                     help="Explicit glyph-name salt — pass the same value you gave "
                          "generate_font.py --glyph-name-salt. Overrides --mapping-id.")
+    ap.add_argument("--script", default="latn",
+                    help="HarfBuzz/OpenType script tag used by the shaping audit")
+    ap.add_argument("--language", default="dflt",
+                    help="HarfBuzz/OpenType language tag used by the shaping audit")
+    ap.add_argument("--artifact-dir",
+                    help="Emit the canonical versioned artifact bundle into this directory")
+    ap.add_argument("--web-font",
+                    help="Web WOFF2 paired with --font for canonical artifact emission")
+    add_json_result_argument(ap)
     args = ap.parse_args()
+    diag = Diagnostics(__file__, args.json_out)
 
     # Rebind module globals so hb_shape()/audit() pick up the overrides.
     if args.font:
@@ -545,6 +862,13 @@ if __name__ == "__main__":
         MAPPING_PATH = Path(args.mapping).resolve()
     if args.html_out:
         HTML_OUT = Path(args.html_out).resolve()
+    ARTIFACT_DIR = Path(args.artifact_dir).resolve() if args.artifact_dir else None
+    WEB_FONT = Path(args.web_font).resolve() if args.web_font else None
+    try:
+        HB_SCRIPT = normalize_ot_tag(args.script, kind="script")
+        HB_LANGUAGE = normalize_ot_tag(args.language, kind="language")
+    except ValueError as exc:
+        ap.error(str(exc))
     GLYPH_SALT = args.glyph_name_salt or derive_glyph_name_salt(args.mapping_id)
 
-    sys.exit(audit())
+    sys.exit(audit(diag))

@@ -1,0 +1,18 @@
+{
+  "fixture_id": "seedfont-task5-v1",
+  "mixed_script": "Latin ё й accents",
+  "nfd_cases": [
+    "е\u0308",
+    "и\u0306",
+    "e\u0308",
+    "cafe\u0301"
+  ],
+  "marks": {
+    "supported": ["0301", "0308", "0306"],
+    "unsupported": ["1AB0"],
+    "boundary": "\u0301word\u0308",
+    "reordered": "a\u0301\u0323"
+  },
+  "languages": ["RUS", "UKR", "BEL", "SRB"],
+  "html_without_lang": "<html><body>text</body></html>"
+}

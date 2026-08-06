@@ -1,0 +1,23 @@
+{
+  "schema": "shieldfont.mapping.v2",
+  "profile": "versioned-groups",
+  "case": "preserve",
+  "seed": {"id": "fixture-seed-7", "value": 7},
+  "groups": [
+    {
+      "id": "fixture.noun",
+      "version": "1",
+      "grammar": "noun",
+      "sources": [
+        {"source": "alpha", "aliases": [
+          {"value": "violet", "position": 0},
+          {"value": "umber", "position": 1}
+        ], "position": 0},
+        {"source": "bravo", "aliases": [
+          {"value": "cobalt", "position": 0},
+          {"value": "silver", "position": 1}
+        ], "position": 1}
+      ]
+    }
+  ]
+}

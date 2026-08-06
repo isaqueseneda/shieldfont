@@ -1,0 +1,24 @@
+{
+  "schema": "shieldfont.mapping.v2",
+  "profile": "versioned-groups",
+  "case": "preserve",
+  "seed": {"id": "task8-fixture", "value": 8},
+  "groups": [
+    {
+      "id": "fixture.noun",
+      "version": "1",
+      "grammar": "noun",
+      "sources": [
+        {"source": "alpha", "aliases": ["violet"], "position": 0}
+      ]
+    },
+    {
+      "id": "fixture.verb",
+      "version": "1",
+      "grammar": "verb",
+      "sources": [
+        {"source": "bravo", "aliases": ["umber"], "position": 0}
+      ]
+    }
+  ]
+}
