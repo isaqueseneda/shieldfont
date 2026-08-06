@@ -20,19 +20,25 @@ COMMANDS = {
     "generate-font": "generate_font.py",
     "reseed_mapping": "reseed_mapping.py",
     "reseed-mapping": "reseed_mapping.py",
+    "audit_font": "audit_font.py",
+    "audit-font": "audit_font.py",
 }
 
 USAGE = """ShieldFont portable console utility
 
 Usage:
-  shieldfont-tools-win64.exe generate_font [generate_font options]
-  shieldfont-tools-win64.exe reseed_mapping [reseed_mapping options]
+  shieldfont-cli.exe generate_font [generate_font options]
+  shieldfont-cli.exe reseed_mapping [reseed_mapping options]
+  shieldfont-cli.exe audit_font [audit_font options]
 
 Commands:
   generate_font   Build a shielded TrueType/WOFF2 font. All options from
                   scripts/generate_font.py are forwarded unchanged.
   reseed_mapping  Create a deterministic mapping contract. All options from
                   scripts/reseed_mapping.py are forwarded unchanged.
+  audit_font      Audit a generated font and mapping, optionally emitting an
+                  HTML report and canonical artifacts. All options from
+                  scripts/audit_font.py are forwarded unchanged.
 
 Run '<command> --help' for the complete parameter descriptions.
 The utility is self-contained and does not require Python, Node.js, or an

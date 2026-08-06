@@ -17,7 +17,8 @@ $outputPath = [System.IO.Path]::GetFullPath(
 $workPath = Join-Path (Get-Location) ".portable-build"
 $scriptData = Join-Path (Get-Location) "scripts"
 $benchmarkData = Join-Path (Get-Location) "benchmark\data\v7"
-$exeName = "shieldfont-tools-win64.exe"
+$exeName = "shieldfont-cli.exe"
+$legacyExeName = "shieldfont-tools-win64.exe"
 
 if (-not $SkipInstall) {
     if (-not (Test-Path (Join-Path $venvDir "Scripts\python.exe"))) {
@@ -33,6 +34,7 @@ if (-not $SkipInstall) {
 if ($Clean) {
     Remove-Item $workPath -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $outputPath $exeName) -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $outputPath $legacyExeName) -Force -ErrorAction SilentlyContinue
 }
 
 New-Item -ItemType Directory -Force $outputPath | Out-Null
@@ -42,7 +44,7 @@ $pyinstaller = @(
     "--noconfirm",
     "--clean",
     "--onefile",
-    "--name", "shieldfont-tools-win64",
+    "--name", "shieldfont-cli",
     "--distpath", $outputPath,
     "--workpath", $workPath,
     "--specpath", $workPath,

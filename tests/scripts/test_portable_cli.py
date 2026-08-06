@@ -29,12 +29,19 @@ class PortableCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("generate_font", result.stdout)
         self.assertIn("reseed_mapping", result.stdout)
+        self.assertIn("audit_font", result.stdout)
 
     def test_generate_help_is_forwarded(self):
         result = self.run_cli("generate_font", "--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("--base-path", result.stdout)
         self.assertIn("--gsub-optimization", result.stdout)
+
+    def test_audit_help_is_forwarded(self):
+        result = self.run_cli("audit_font", "--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--font", result.stdout)
+        self.assertIn("--artifact-dir", result.stdout)
 
     def test_reseed_is_forwarded_and_writes_contract(self):
         with tempfile.TemporaryDirectory() as directory:
