@@ -75,6 +75,18 @@ python3 scripts/audit_font.py --font public/fonts/shieldfont-mine.ttf \
   --mapping mine/mapping.json
 ```
 
+On Windows x64, replace the three Python commands with the bundled
+`dist\shieldfont-cli.exe`:
+
+```powershell
+.\dist\shieldfont-cli.exe reseed_mapping --seed 8675309 --out .\mine\mapping.json
+.\dist\shieldfont-cli.exe generate_font `
+  --base-path .\your-typeface.ttf --name "Custom A8F3" `
+  --prefix shieldfont-mine --mapping-path .\mine\mapping.json
+.\dist\shieldfont-cli.exe audit_font `
+  --font .\public\fonts\shieldfont-mine.ttf --mapping .\mine\mapping.json
+```
+
 Then keep `mine/mapping.json` off your servers, ship the font and CSS, and encode with the mapping (see [Pointing your code at a custom mapping](#pointing-your-code-at-a-custom-mapping) below).
 
 **Store your seed.** The reseed is deterministic: the same seed and the same source pool always produce a byte-identical mapping. That is your backup. Lose the JSON and you can regenerate it from the seed alone; lose both and you cannot decode your own archived pages.

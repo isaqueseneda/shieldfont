@@ -124,6 +124,35 @@ private or verification files to the browser.
 Naming rules and the full flag/output reference:
 [`docs/custom-faces.md`](./docs/custom-faces.md).
 
+### Portable Windows CLI
+
+The repository also ships `dist\shieldfont-cli.exe`, a self-contained
+Windows x64 console utility. It bundles Python, fontTools, HarfBuzz,
+requests, Brotli, and all upstream scripts, so the target machine does not
+need Python, Node.js, or a ShieldFont checkout.
+
+Build or refresh it from the repository root:
+
+```powershell
+.\scripts\build-portable.ps1 -Clean
+.\dist\shieldfont-cli.exe --help
+```
+
+Use `-SkipInstall` when the current Python environment already has the
+versions from `requirements.txt` and PyInstaller 6.21.0. The build script
+supports `-OutputDir DIR`, `-Python PATH`, `-SkipInstall`, and `-Clean`.
+
+| Command | Purpose |
+|---|---|
+| `shieldfont-cli.exe generate_font ...` | Build a matching TTF, WOFF2, CSS, and mapping bundle from a TrueType source. |
+| `shieldfont-cli.exe reseed_mapping ...` | Create a deterministic grouped mapping contract or legacy flat mapping. |
+| `shieldfont-cli.exe audit_font ...` | Validate a generated TTF/mapping pair and optionally emit HTML, JSON, and canonical audit artifacts. |
+
+Every command forwards its complete upstream option set. Run
+`shieldfont-cli.exe <command> --help` for parameter descriptions and
+copy-paste examples. Defaults and generated paths resolve from the current
+working directory; the private runtime cache is `.shieldfont-cache\`.
+
 ### Bring your own key
 
 Three dictionaries ship, each with its own key. Private keys are harder for scrapers to decode, and a small private mapping helps about as much as an elaborate one, because what matters is being different from every other deployment rather than being optimal.

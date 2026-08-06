@@ -13,6 +13,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added versioned grouped mapping contracts with deterministic aliases,
   document-specific nonce selection, compatibility flat output, and opaque
   cache/bundle identities.
+- Added the self-contained Win64 `shieldfont-cli.exe` with `generate_font`,
+  `reseed_mapping`, and `audit_font` commands, complete forwarded help, and
+  built-in basic and advanced command examples.
 - Added canonical build artifacts and manifests with explicit public, private,
   and verification roles, including safe JSON diagnostics and deterministic
   timestamp controls.

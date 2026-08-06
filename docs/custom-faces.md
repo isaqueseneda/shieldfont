@@ -30,6 +30,25 @@ python3 scripts/audit_font.py --font public/fonts/shieldfont-yourtypeface.ttf \
   --web-font public/fonts/shieldfont-yourtypeface.woff2
 ```
 
+On Windows x64, the same workflow is available without installing Python:
+
+```powershell
+.\dist\shieldfont-cli.exe generate_font `
+  --base-path .\your-typeface.ttf `
+  --name "ShieldFont YourTypeface" `
+  --prefix shieldfont-yourtypeface `
+  --mapping-path .\scripts\v18alpha_for_font.json `
+  --artifact-dir .\build-artifacts
+
+.\dist\shieldfont-cli.exe audit_font `
+  --font .\public\fonts\shieldfont-yourtypeface.ttf `
+  --mapping .\public\fonts\shieldfont-yourtypeface.map.json `
+  --artifact-dir .\build-artifacts `
+  --web-font .\public\fonts\shieldfont-yourtypeface.woff2
+```
+
+Run each command with `--help` for the full forwarded upstream parameter set.
+
 Outputs land in `public/fonts/` as `.ttf`, `.woff2`, `.map.json`, and a ready
 `@font-face` CSS. The `--mapping-path` argument decides which dictionary the
 font decodes. The example above uses the shipped `alpha` pool; to build against
