@@ -576,7 +576,8 @@ per-language synonym audit.
 - 🇧🇷 / 🇵🇹 **Portuguese** (pt-BR + pt-PT): founding-team native
   language; first non-English target.
 - 🇪🇸 **Spanish**: concreteness norm available, large speaker base.
-- 🇫🇷 **French**: concreteness norm available.
+- 🇫🇷 **French**: mapping built, font and native audit outstanding —
+  see [the French section below](#french-fr-v1).
 - 🇩🇪 **German**: concreteness norm available; tokenizer disruption
   is interesting because of compounds.
 - 🇮🇹 **Italian**: concreteness norm available.
@@ -596,11 +597,46 @@ Open question: whether language dictionaries ship with the generator,
 or are fetched from a central registry. Central registry gives
 consistency across deployments; local dictionaries give independence.
 
-**Status:** unclaimed. `M15-MULTI` scaffolding exists but no language
-has been built. Portuguese is first and the founding team speaks it, so
-that one is ours to lose; every other language needs a native linguist
-who wants to own it. This is the roadmap item most likely to move if
-one person volunteers.
+**Status:** Portuguese is first and the founding team speaks it, so that
+one is ours to lose; every other language needs a native linguist who wants
+to own it. This is the roadmap item most likely to move if one person
+volunteers. French now has a mapping and a pipeline (below); every other
+target is unclaimed.
+
+### French (fr-v1) {#french-fr-v1}
+
+Tracking issue: [#11](https://github.com/isaqueseneda/shieldfont/issues/11).
+
+[`scripts/build_fr_pairs.py`](./scripts/build_fr_pairs.py) builds
+`fr-v1-alpha`: **5,415 logical pairs / 10,830 entries**, seed 42, from
+Lexique 3.83. Provenance and the full method are in
+[`benchmark/data/fr/README.md`](./benchmark/data/fr/README.md).
+
+It departs from the deployment plan above in two places, both forced:
+
+- **Step 1 does not hold.** Swapping the wordfreq language code is not
+  enough, because a French decoy has to agree in **gender** and match the
+  **elision class** of the word it replaces — `la maison` → `la livre` and
+  `l'arbre` → `l'maison` are ungrammatical, and ungrammatical text is
+  filtered as noise rather than read as prose. Both are bucket dimensions
+  in the French pipeline and neither exists in the English one.
+- **Step 2's concreteness norm is not used.** The Bonin norms are not
+  redistributable. Semantic structure comes from k-means over spaCy
+  vectors instead, which is coarser than the English WordNet-supersense
+  buckets and is the largest known quality gap in the French build.
+
+**Outstanding, in the order they block shipping:**
+
+1. **No font.** The mapping renders as visible decoy text until an
+   `optik-fr` build exists, and the Optik base is Playtype's to provide.
+   This is why French is not wired into `@shieldfont/core`.
+2. **No native audit.** Every pair is mechanical.
+   `benchmark/data/fr/audit_fr_v1_alpha.csv` has a `verdict` column and one
+   row per logical pair, ready to be filled in.
+3. **Step 3 not started.** No French antonym curation.
+4. **No French benchmarks.** None of the NLI, KenLM, FineWeb-Edu or
+   wasted-token numbers in `benchmark/` have been re-run for French, so no
+   headline figure in this repository describes the French mapping.
 
 ---
 

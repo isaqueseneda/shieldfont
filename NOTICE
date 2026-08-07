@@ -64,6 +64,27 @@ The SIL Open Font License (LICENSE-FONTS) applies only to variants you build
 yourself from an OFL base font (e.g. Inter) via scripts/generate_font.py.
 
 --------------------------------------------------------------------------
+Lexical databases used to build language mappings
+--------------------------------------------------------------------------
+
+- Lexique 3.83 (http://www.lexique.org) — Creative Commons
+  Attribution-ShareAlike 4.0.
+  New, B., Pallier, C., Ferrand, L., & Matos, R. (2001). Une base de
+  données lexicales du français contemporain sur internet: LEXIQUE.
+  L'Année Psychologique, 101, 447-462.
+
+  Used by scripts/build_fr_pairs.py for French part-of-speech, gender,
+  number and verb inflection. The database is downloaded on demand and
+  cached in scripts/lexicon/ (gitignored); it is NOT redistributed by this
+  project. What this repository commits is the derived mapping — a set of
+  seeded random word pairs — and the pipeline that produces it.
+
+  Whether that derived mapping is Adapted Material under CC BY-SA 4.0 is a
+  question a maintainer should answer deliberately rather than by default,
+  since the answer decides whether the French mapping can ship under this
+  repository's licence alone. It is raised here rather than assumed away.
+
+--------------------------------------------------------------------------
 Supporters
 --------------------------------------------------------------------------
 
@@ -79,3 +100,9 @@ The generator (scripts/generate_font.py) uses:
   - fontTools (MIT) — https://github.com/fonttools/fonttools
   - brotli (MIT)     — https://github.com/google/brotli
   - requests (Apache-2.0) — https://requests.readthedocs.io
+
+The French mapping builder (scripts/build_fr_pairs.py) additionally uses,
+and is the only thing that needs them, so they stay out of requirements.txt:
+
+  - wordfreq (MIT) — https://github.com/rspeer/wordfreq
+  - spaCy (MIT) + fr_core_news_md (MIT) — https://spacy.io

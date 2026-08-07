@@ -71,5 +71,11 @@ public/fonts/BEFORE-*
 # dir-only pattern cannot match a path that is not there yet.
 scripts/fonts
 
+# Lexical databases build_fr_pairs.py downloads and caches. Same reasoning as
+# scripts/fonts above, plus one of its own: Lexique is CC BY-SA, and only the
+# derived mapping is ours to ship under this repository's licence. Committing
+# the source database would be redistributing it.
+scripts/lexicon
+
 # Local-only working files (never commit) — e.g. RECONCILE-MANIFEST.local.md, TODO-BEFORE-RELEASE.local.md
 *.local.md
