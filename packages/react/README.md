@@ -5,7 +5,7 @@ A React **server component** for [ShieldFont](https://github.com/isaqueseneda/sh
 **Encoded text is what reaches the browser.** Scrapers reading the HTML source see the encoded form. Humans, rendering through the font, see the original.
 
 > [!CAUTION]
-> **ShieldFont harms accessibility, on purpose, and no setting turns that off.** It withholds the real text of a protected block from the page source, so a protected block **fails WCAG 2.2 SC 1.3.1** even with every accessibility feature on: the words are not programmatically available until a reader completes a few-second unlock that needs JavaScript. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site — or you claim WCAG conformance anywhere on it — don't use this on content that claim covers. It is for an author's own essays, fiction and blog posts, by their own informed choice; not for government, procurement-bound or service-critical content. Details: [Accessibility](#accessibility-read-this).
+> **Screen readers get the real text.** Every protected block carries a notice with a button that shows it, on by default. Tested with NVDA and VoiceOver, which cover most screen reader users. ShieldFont is a v0 alpha. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site, or you claim WCAG conformance anywhere on it, don't use this on content that claim covers. Details: [Accessibility](#accessibility-read-this).
 
 > [!WARNING]
 > **Wrapping content in `<Shield>` removes it from search-engine indexing.** The DOM text is `aria-hidden` decoy gibberish, and you **cannot** distinguish Googlebot from an AI scraper, so search engines index the decoy, not your words. **Do not wrap anything you want to rank.** This is the single biggest thing to understand before you ship; see [Accessibility](#accessibility-read-this) and [Where the encoding must run](#where-the-encoding-must-run-important).
@@ -111,7 +111,7 @@ Precedence when several of these could pick the variant, highest first: an expli
 ### Weights: what actually ships
 
 > [!IMPORTANT]
-> **Weights are a React-tier feature.** The static [`@shieldfont/font`](https://www.npmjs.com/package/@shieldfont/font) package (the CDN paste-in tier) ships **Regular only**: one file per mapping variant, each declared `font-weight: normal`. If you need Bold, or any cut other than Regular, you need this package. Everything in this section applies to `<Shield>` and to nothing else.
+> **Weights are a React-tier feature.** The static [`@shieldfont/font`](https://www.npmjs.com/package/@shieldfont/font) package (the CDN paste-in tier) ships **Regular only**: an upright and an italic per mapping variant, both declared `font-weight: normal`. Italics are not the difference between the tiers; weights are. If you need Bold, or any cut other than Regular, you need this package. Everything in this section applies to `<Shield>` and to nothing else.
 
 The mapping variants and the weights are two orthogonal axes. `optik-a/b/c/m` correspond to the `alpha`/`beta`/`gamma`/`maxhide` dictionaries; each of the four ships six real static cuts of Optik in each of two styles, licensed from Playtype. Every file is built from one of Playtype's own masters, run through the same encoding pipeline. There is no variable font and nothing is interpolated or synthesised.
 
@@ -126,7 +126,7 @@ The named weights are Playtype's own cut names, lowercased:
 | `"extrabold"` | `800` | Optik ExtraBold | `optik-a-800.woff2` |
 | `"black"` | `900` | Optik Black | `optik-a-900.woff2` |
 
-Filenames follow one rule: the Regular cut keeps the bare variant name, every other cut carries a numeric suffix, and italics take an `-italic` infix before the weight (`optik-a-italic.woff2`, `optik-a-italic-700.woff2`). Forty-eight files ship in total (6 weights x 2 styles x 4 variants). The exported `OPTIK_WEIGHTS` object maps each name to its numeric weight, so code can check at runtime what exists.
+Filenames follow one rule: the Regular cut keeps the bare variant name, every other cut carries a numeric suffix, and italics take an `-italic` infix before the weight (`optik-a-italic.woff2`, `optik-a-italic-700.woff2`). Forty-eight shielded files ship (6 weights x 2 styles x 4 variants), plus the neutral cut's twelve behind `<NonShield>`, for sixty in the package. The exported `OPTIK_WEIGHTS` object maps each name to its numeric weight, so code can check at runtime what exists.
 
 #### Italics
 
@@ -276,7 +276,7 @@ text at full readability.
 | Prop | Type | Default | Purpose |
 |---|---|---|---|
 | `as` | `ElementType` | `"div"` | Which element to render. No table-tag restriction — `<NonShield>` renders one element and no wrapper, so `as="td"` is a `<td>` and behaves like one. |
-| `variant` | `"alpha" \| "beta" \| "gamma" \| "maxhide"` | `"alpha"` | **Only which file the browser fetches.** With substitutions off all four faces draw identical outlines, so this is a bandwidth choice, not a protection one. |
+| `variant` | `"alpha" \| "beta" \| "gamma" \| "maxhide"` | n/a | **Deprecated and ignored.** It used to pick which shielded file to fetch, back when this component rendered through a shielded face with the substitutions switched off. There is one neutral cut now, so whatever you pass you get `optik-n`. An unbundled value still throws. |
 | `weight` | cut name or `1..1000` | inherit | The same six real cuts, the same nearest-cut snapping, the same `font-synthesis: none`. |
 | `lineHeight` | `number \| string` | inherit | Passthrough. |
 | `size` | `string` | inherit | font-size passthrough. |
@@ -296,16 +296,18 @@ sealed, so there is no protected form for nested content to fall out of.
 
 ### What it deliberately does not do
 
-- **It does not rotate `variant`.** `<Shield>` spreads blocks across
-  `alpha`/`beta`/`gamma` because the mapping changes what a scraper reads; here
-  nothing is encoded, so rotating would pull a second ~825 KB file onto the page
-  to draw the same outlines. Pin `<Shield>` to the variant your `<NonShield>`s
-  use and the page downloads one font.
+- **It does not rotate `variant`, and there is nothing left for it to pick.**
+  `<Shield>` spreads blocks across `alpha`/`beta`/`gamma` because the mapping
+  changes what a scraper reads; `<NonShield>` encodes nothing and always renders
+  the neutral cut. Pinning `<Shield>` to one variant does **not** collapse the
+  page to a single download: the neutral cut is a different file under a
+  different family, so a page mixing the two always fetches two faces — one
+  shielded cut at ~840 KB and `optik-n` at ~35 KB.
 - **It emits no font-load guard and is not covered by `<Shield>`'s.** It does
   not stamp `data-typeface`, which is what the guard's selectors match. A
   missing font therefore leaves `<NonShield>` rendering **the correct words in a
   fallback face** — degraded design, intact content — instead of blanking them
-  behind the "Content unavailable" skeleton. Its weights are not seeded into the
+  behind the guard's skeleton. Its weights are not seeded into the
   guard either, so a missing `optik-a-800.woff2` used only by a heading cannot
   skeletonise every genuinely shielded block on the page.
 - **It shares assets rather than duplicating them.** A page mixing the two
@@ -396,11 +398,13 @@ import { setFontHost } from "@shieldfont/react";
 setFontHost("/static/shieldfont");           // or your OWN CDN
 ```
 
-There is **no default public CDN by design**. A scraping defense must fail *loud*, never silent: if the font can't load, readers would otherwise see decoy gibberish with no signal it's wrong. Self-hosting guarantees the font ships with your build, and the bundled **font-load guard** (inlined, no hydration needed) watches `document.fonts` and, if the font doesn't load within 4 s, visibly replaces every protected element with *"Content unavailable"* and logs a clear console error. Never the raw decoy.
+There is **no default public CDN by design**. A scraping defense must fail *loud*, never silent: if the font can't load, readers would otherwise see decoy gibberish with no signal it's wrong. Self-hosting guarantees the font ships with your build, and the bundled **font-load guard** (inlined, no hydration needed) watches `document.fonts` and, if the font doesn't load within 4 s, visibly blanks every protected element — the words go transparent behind a striped grey skeleton that keeps the block's box — and logs a clear console error naming the family and the host it tried. It substitutes no message of its own, and never the raw decoy.
 
 The guard checks **every weight the page actually renders**, not just Regular: the weights `<Shield>` resolved from the `weight` prop, plus a sweep of each protected element's computed `font-weight` for weights that arrive by inheritance or from your own stylesheet. A missing `optik-a-700.woff2` fails exactly as loudly as a missing `optik-a.woff2`, and a page that only uses Black downloads only the Black cut.
 
 > **JS-off caveat:** that font-load guard is **JavaScript**. With JavaScript disabled *and* the font failing to load (e.g. a 404), the guard can't run, and a reader in that state sees the **raw decoy text**. There is no non-JS fallback for this specific case; the fail-loud guarantee holds only where scripts run.
+>
+> The unlock is JavaScript too, and with scripts off its controls are still on the page: the drawn wrapper renders a real, visible, focusable Uncover button that does **nothing**, and `wrapper={false}` renders one that never leaves `hidden`. Both tiers ship a `<noscript>` — a stylesheet that takes the dead controls off the page, and one sentence after the note saying the words can't be shown without JavaScript. Reword or silence it with `noScript`.
 
 ### One `@font-face` block per page, not per `<Shield>`
 
@@ -428,24 +432,27 @@ setCamouflage({ hash: "a8f3" });   // → font-family "Optik a8f3", data-typefac
 ```
 
 > [!WARNING]
-> **Camouflage also renames the font *files* in the `@font-face` `src`, so you MUST copy each font to its camouflaged filename, or the page fails loud.** With `hash: "a8f3"`, `<Shield>` stops requesting `optik-*.woff2` and instead requests `/fonts/font-a8f3.woff2` (alpha Regular), `/fonts/font-a8f3-beta.woff2`, `/fonts/font-a8f3-gamma.woff2`, **and one file per weight on top of that**: a `weight="bold"` block asks for `/fonts/font-a8f3-700.woff2`. Those files don't exist until you create them; if they 404, the font-load guard replaces every protected element with *"Content unavailable."* The plain `cp …/*.woff2` step from the quick start is **not** enough once camouflage is on.
+> **Camouflage also renames the font *files* in the `@font-face` `src`, so you MUST copy each font to its camouflaged filename, or the page fails loud.** With `hash: "a8f3"`, `<Shield>` stops requesting `optik-*.woff2` and instead requests `/fonts/font-a8f3.woff2` (alpha Regular), `/fonts/font-a8f3-beta.woff2`, `/fonts/font-a8f3-gamma.woff2`, **and one file per weight and per style on top of that**: a `weight="bold"` block asks for `/fonts/font-a8f3-700.woff2`, an `<em>` asks for `/fonts/font-a8f3-italic.woff2`. It renames the **neutral cut** too, so `<NonShield>` starts asking for `/fonts/font-a8f3-n.woff2`. None of those files exist until you create them, and if one 404s the font-load guard blanks every block using that variant behind its skeleton. The plain `cp …/*.woff2` step from the quick start is **not** enough once camouflage is on.
 
-Camouflaged names follow the same rule as the bundled ones: **Regular keeps the bare prefix, every other cut carries its numeric suffix.** So the full set for one hash is 6 weights x 4 variants = 24 files. Copy every weight of every variant in the auto-rotation pool (all three, because a block can hash to any of them), and repeat for each hash you use:
+Camouflaged names follow the same rule as the bundled ones: **Regular keeps the bare prefix, every other cut carries its numeric suffix, and an italic takes an `-italic` infix before the weight** (`font-a8f3-italic-700.woff2`). Every family declares all twelve of its faces — six weights x upright and italic — whether or not you host them, and there are five families, the four mapping variants plus the neutral cut `<NonShield>` renders in. So the full set for one hash is **12 faces x 5 families = 60 files**, which is exactly the 60 the package bundles. Copy all of them, and repeat for each hash you use:
 
 ```bash
 SRC=node_modules/@shieldfont/react/fonts
 HASH=a8f3
 
-for W in "" -500 -600 -700 -800 -900; do
-  cp "$SRC/optik-a$W.woff2" "public/fonts/font-$HASH$W.woff2"          # alpha
-  cp "$SRC/optik-b$W.woff2" "public/fonts/font-$HASH-beta$W.woff2"     # beta
-  cp "$SRC/optik-c$W.woff2" "public/fonts/font-$HASH-gamma$W.woff2"    # gamma
-  # only if you also use <Shield variant="maxhide">:
-  cp "$SRC/optik-m$W.woff2" "public/fonts/font-$HASH-maxhide$W.woff2"
+for S in "" -italic; do
+  for W in "" -500 -600 -700 -800 -900; do
+    cp "$SRC/optik-a$S$W.woff2" "public/fonts/font-$HASH$S$W.woff2"          # alpha
+    cp "$SRC/optik-b$S$W.woff2" "public/fonts/font-$HASH-beta$S$W.woff2"     # beta
+    cp "$SRC/optik-c$S$W.woff2" "public/fonts/font-$HASH-gamma$S$W.woff2"    # gamma
+    cp "$SRC/optik-n$S$W.woff2" "public/fonts/font-$HASH-n$S$W.woff2"        # neutral (<NonShield>)
+    # only if you also use <Shield variant="maxhide">:
+    cp "$SRC/optik-m$S$W.woff2" "public/fonts/font-$HASH-maxhide$S$W.woff2"
+  done
 done
 ```
 
-Copying only the Regular cuts is the trap: nothing breaks until the first `weight="bold"` block ships, and then that block alone 404s and blanks to *"Content unavailable."* If you are certain a variant or a weight is never used you can skip its file, but the auto-rotation pool makes that hard to be certain about, and all 24 files together are roughly 16 MB either way.
+Copying only the Regular uprights is the trap: nothing breaks until the first `weight="bold"` block or the first `<em>` ships, and then that variant's blocks 404 and blank behind the skeleton — every one of them, not just the block that asked. The italic is the one people miss, because `<em>`, `<i>`, `<cite>` and any author `font-style: italic` reach for it with nothing to opt into. If you are certain a variant, a weight or a style is never used you can skip its file, but the auto-rotation pool makes that hard to be certain about, and the whole set is about 37 MB either way (34 MB if you leave maxhide out).
 
 There's no CLI for this step: pick any short string for the hash and script the copy/rename into your build (e.g. a `package.json` `postinstall`/build script) alongside the build-time encoding you run with [`@shieldfont/core`](https://www.npmjs.com/package/@shieldfont/core).
 
@@ -455,15 +462,15 @@ There's no CLI for this step: pick any short string for the hash and script the 
 > **SEO:** the same property that hides text from scrapers hides it from **search engines**. Protected text is `aria-hidden` gibberish in the DOM, and you can't tell Googlebot apart from an AI scraper, so anything inside `<Shield>` is indexed as decoy, not as your real words. **Don't wrap content you want to rank** (page titles, headings, marketing copy). Wrap only what you're deliberately withholding from machines.
 
 > [!WARNING]
-> **A protected block fails WCAG 2.2 SC 1.3.1, with every accessibility feature turned on, and that will not be patched out.** ShieldFont deliberately withholds the real text of a protected block from the page source: the words are not programmatically available until a reader completes an unlock taking **a few seconds** and requiring JavaScript, a modern browser and an https origin. An audit will flag every block you wrap. If the **ADA** (including the Title II web rule for US state and local government), **Section 508**, the **European Accessibility Act / EN 301 549** or the **UK Equality Act 2010** applies to your site, or you claim WCAG conformance anywhere on it, don't put `<Shield>` on content that claim covers. The accessible features below make a protected page **humane**, not compliant, and we will never describe them otherwise. Full statement, including where ShieldFont *is* a reasonable choice: [the accessibility warning](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility).
+> **A reader gets the real text from the button in the notice above the block.** It needs JavaScript, a current browser and an https origin. What stays out of the page source is the source text, which is the whole mechanism, so an audit will flag every block you wrap. If the **ADA** (including the Title II web rule for US state and local government), **Section 508**, the **European Accessibility Act / EN 301 549** or the **UK Equality Act 2010** applies to your site, or you claim WCAG conformance anywhere on it, don't put `<Shield>` on content that claim covers. The accessible features below make a protected page **humane**, not compliant. Full statement, including where ShieldFont *is* a reasonable choice: [the accessibility warning](https://github.com/isaqueseneda/shieldfont#accessibility).
 
-Protected regions are `aria-hidden="true"`: the DOM text is encoded gibberish, so screen readers, `Ctrl/⌘-F`, copy-paste, and translation tools operate on the gibberish, not the visible words. **This is inherent to the approach** (a font that hides text from machines hides it from assistive tech too), and `aria-hidden` is not configurable — it is set unconditionally and there is no prop to turn it off.
+What carries `aria-hidden="true"` is the **scrambled layer**. The DOM text of a protected block is encoded gibberish, so `Ctrl/⌘-F`, copy-paste and translation tools operate on the gibberish, not the visible words, until a reader uncovers the block. **This is inherent to the approach** (a font that hides text from machines hides it from anything else reading the DOM), and `aria-hidden` on the encoded block is not configurable — it is set unconditionally and there is no prop to turn it off. The real words are not missing from the page: they ship sealed in the same HTML, and the visible notice above the block carries the button that opens them.
 
-That is the right call and it is still not enough. Un-hiding would make a screen reader voice the decoy: fluent, grammatical, wrong, with nothing to signal that anything is off — worse than silence, because it doesn't announce itself as broken. But silence isn't a fix either. Either way, what a sighted reader perceives is not programmatically determinable, which fails **WCAG 2.2 SC 1.3.1**.
+Hiding the decoy is the right call and it is not the whole job. Un-hiding would make a screen reader voice the decoy: fluent, grammatical, wrong, with nothing to signal that anything is off — worse than silence, because it doesn't announce itself as broken. But silence isn't a fix either. Either way, the words a sighted reader sees would be nowhere in the accessibility tree.
 
-Two things that claim is often stretched into, and neither is true:
+Two things that need saying precisely: what a screen reader is and is not handed, and what happens when a reader forces their own font.
 
-- **`aria-hidden` does not put the decoy out of reach.** It governs linear and heading navigation, which is where the silence comes from. NVDA's mouse-tracking and screen-review modes, and touch exploration on iOS and Android, walk the DOM by screen position, so a reader using one of those can still land on a decoy word and hear it. Reported in [#2](https://github.com/isaqueseneda/shieldfont/issues/2).
+- **Reading down the page, a screen reader is never handed the scrambled version.** Our NVDA test asserts that. Screen review and touch exploration work differently and we have no automated coverage of them. [#2](https://github.com/isaqueseneda/shieldfont/issues/2) reported a decoy could be reached that way; we have not reproduced it in VoiceOver or iOS touch. If you can test it properly: [#9](https://github.com/isaqueseneda/shieldfont/issues/9).
 - **A reader who forces their own font gets no protection from any of this and no warning either.** With Firefox's *"Allow pages to choose their own fonts"* off, a dyslexia-friendly font extension, or some high-contrast setups, the decoy renders in the forced font. The font loaded, so the font-load guard never fires, and `getComputedStyle` still reports the family you asked for, so nothing in the page can detect it. They read fluent, wrong English silently. The **visible wrapper** is the only mitigation that reaches them: [forced fonts](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#forced-fonts-the-one-with-no-signal).
 
 The whole list of what wrapping a block costs a human reader is [what protecting a block breaks](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
@@ -498,20 +505,20 @@ What the reader actually gets, in the default configuration: a note, then a butt
 > **`mode: "text"` renders no link.** The `0.2.0` shape was `{ mode: "text", href }`, pointing at a plain-text copy on its own URL; it was removed, along with every other link this layer ever offered, because a URL cannot be offered to a screen reader without being offered to everyone else and the same crawl that reads the decoy reads the link sitting beside it. The mode that replaced it inverts that trade: the words are in the page but **closed**, and the key is the answer to a time-lock puzzle — T sequential squarings that cannot be parallelised, so a crawler with a thousand GPUs still pays them one at a time, per block. Sealing costs about 64 ms per payload, and a block is four of them — one real, three decoys — so about 261 ms per block; opening costs the reader their 14-second budget, and they grind exactly one payload. Nobody is denied the text; the accessible path simply stops being the *cheapest* path in.
 
 > [!WARNING]
-> **Under `wrapper={false}` the control is invisible, and a sighted keyboard user pays for it.** The drawn wrapper is the default and its Copy and Uncover buttons are real, on screen and `:focus-visible`. Turn it off and `visualHidden` takes over at its `true` default: someone navigating by keyboard **without** a screen reader Tabs into a control they cannot see and their focus indicator vanishes — a **WCAG 2.2 SC 2.4.7** failure. That is deliberate, and it was the shipped default in 0.3.0 and 0.3.1; the reasoning was that a sighted reader can already read the block, so an on-screen widget offering to unlock it is unexplained noise. The usual remedy (clipped until focused, visible while focused) is not applied, because the control was asked to be invisible. Leave `wrapper` at its default, or pass `visualHidden: false`, to take the other trade.
+> **Under `wrapper={false}` the control is invisible, and a sighted keyboard user pays for it.** The drawn wrapper is the default and its Copy and Uncover buttons are real, on screen and `:focus-visible`. Turn it off and `visualHidden` takes over at its `true` default: someone navigating by keyboard **without** a screen reader Tabs into a control they cannot see and their focus indicator vanishes. That is deliberate, and it was the shipped default in 0.3.0 and 0.3.1; the reasoning was that a sighted reader can already read the block, so an on-screen widget offering to unlock it is unexplained noise. The usual remedy (clipped until focused, visible while focused) is not applied, because the control was asked to be invisible. Leave `wrapper` at its default, or pass `visualHidden: false`, to take the other trade.
 
 > [!WARNING]
 > **Difficulty has a ceiling, and `seconds: 14` is at it.** A crawler that wants your words can render the page and OCR the pixels for roughly five seconds of server CPU per page whether or not this feature exists — that is the floor on ShieldFont's protection, and no cryptography raises it. The goal is therefore *not cheaper than OCR*, not "expensive". Past that point, extra difficulty buys **nothing** (a crawler just takes the cheaper door) and is paid for entirely by disabled readers waiting longer. `sealText` refuses anything above 30 or below 1. If you are tempted to raise it to "harden" a page, that is the mistake this paragraph exists to stop.
 
-**What this does not fix, and we won't pretend otherwise:**
+**What this does not fix:**
 
 - **OCR is still cheaper** for a crawler that wants your words. `mode: "text"` stops the accessible path being a *shortcut*; it does not stop scraping and it is not a wall.
 - **A reader who needs `mode: "text"` waits.** Everyone else has the words instantly. That is unequal access however carefully it is engineered — a compromise, not a solution.
 - **`mode: "text"` needs JavaScript**, plus `BigInt` and `crypto.subtle`, and a secure (https) origin. Everything else in ShieldFont works with JS off; this does not. `crypto.subtle` is also missing on insecure origins, so plain `http://` breaks it (the control says so rather than blaming the browser).
-- **A sighted keyboard user loses their focus indicator under `wrapper={false}`** (WCAG 2.2 SC 2.4.7, above), where the control is clipped off-screen. The default draws it; `visualHidden: false` is the other opt-out. None of that makes a protected block conformant — it still fails SC 1.3.1, and that is the mechanism.
+- **A sighted keyboard user loses their focus indicator under `wrapper={false}`** (above), where the control is clipped off-screen. The default draws it; `visualHidden: false` is the other opt-out. None of that makes a protected block compliant: an audit will flag every block you wrap, and that is the mechanism.
 - **Once revealed, the plaintext is in the DOM.** A crawler that runs a real browser, presses the button and waits gets the words — having paid for them, which is the deal.
 
-**Where the testing stands, exactly.** The text mode is exercised under `@guidepup/virtual-screen-reader` in Playwright, driven against **real NVDA on a Windows runner in CI on every commit**, and driven by hand with **real VoiceOver on macOS** — which is what found the group chatter, the announcements that cut each other off and the revealed text that could not be re-read, all since fixed. **JAWS remains unverified.** An axe-core scan, before and after the unlock, reports zero violations across WCAG 2.0/2.1/2.2 A and AA. **That is not a pass and not conformance:** axe covers roughly a third of WCAG and cannot judge whether the words handed to a screen reader are the words on the screen, which is the whole question here. Beside it, `npm run test:style` measures the drawn wrapper — contrast, hit targets, overflow, perceivable boundaries — inside seventeen deliberately hostile host pages (Tailwind Preflight, `button { all: unset }`, forced-colors, 10px and 24px roots, RTL, four light/dark combinations); sixteen come back clean and one is a documented known limit, where the host's own body text is already below the contrast line and the wrapper, which inherits the host's text colour on purpose, cannot be more legible than the page it sits in. That settles seventeen hosts and says nothing about the eighteenth. There is no published test page.
+**Where the testing stands, exactly.** The text mode is exercised under `@guidepup/virtual-screen-reader` in Playwright, driven against **real NVDA on a Windows runner in CI on every commit**, and driven by hand with **real VoiceOver on macOS** — which is what found the group chatter, the announcements that cut each other off and the revealed text that could not be re-read, all since fixed. **JAWS is untested.** An axe-core scan, before and after the unlock, reports zero violations across its full rule set. **That is not a pass and not conformance:** axe covers roughly a third of WCAG and cannot judge whether the words handed to a screen reader are the words on the screen, which is the whole question here. Beside it, `npm run test:style` measures the drawn wrapper — contrast, hit targets, overflow, perceivable boundaries — inside seventeen deliberately hostile host pages (Tailwind Preflight, `button { all: unset }`, forced-colors, 10px and 24px roots, RTL, four light/dark combinations); sixteen come back clean and one is a documented known limit, where the host's own body text is already below the contrast line and the wrapper, which inherits the host's text colour on purpose, cannot be more legible than the page it sits in. That settles seventeen hosts and says nothing about the eighteenth. There is no published test page.
 
 Better ideas here are the most useful contribution anyone can make to this project. Meanwhile: don't wrap navigation, form labels, or essential interactive text.
 
@@ -519,7 +526,7 @@ Better ideas here are the most useful contribution anyone can make to this proje
 
 ```jsx
 import { VERSION } from "@shieldfont/react";   // re-exported from @shieldfont/core
-console.log(VERSION);   // "0.3.0" — the package version
+console.log(VERSION);   // "0.3.5" — the package version
 ```
 
 Use it to confirm which encoder you're running. It is **not** a dictionary

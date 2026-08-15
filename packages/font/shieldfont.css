@@ -1,9 +1,9 @@
 /* ShieldFont v0.3.4 — paste-in CSS for the no-build / CDN install.
  *
  * 1) Add this stylesheet (pick one):
- *      @import url("https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.4/shieldfont.css");
+ *      @import url("https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css");
  *    or
- *      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.4/shieldfont.css">
+ *      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css">
  *    Always pin the version (@0.3.4), never @latest.
  *
  * 2) Encode your text FIRST. This CSS only renders decoy words back to the

@@ -3,7 +3,7 @@
  *
  * It used to fire for an OMITTED `a11y` prop, because the alternative was
  * opt-in and silence was the default. `screenReader` now defaults to true, so
- * omitting everything produces an accessible block and there is nothing to
+ * omitting everything ships the alternative and there is nothing to
  * warn about — the warning moved to the one remaining way to end up with an
  * aria-hidden block and no alternative, which is asking for it.
  *
@@ -39,7 +39,12 @@ describe("opting out of the accessible alternative", () => {
     const message = String(warn.mock.calls[0]?.[0]);
     expect(message).toContain("screenReader");
     expect(message).toMatch(/aria-hidden/);
-    expect(message).toMatch(/WCAG/);
+    // It has to say what the off-state actually costs a reader, in plain words.
+    // No criterion numbers: the message is read by a developer at a console,
+    // and a citation there teaches the wrong vocabulary back into the docs.
+    expect(message).toMatch(/assistive technology/i);
+    expect(message).toMatch(/NOTHING/);
+    expect(message).not.toMatch(/WCAG/);
     // It must point at the fix, including the explicit opt-out...
     expect(message).toMatch(/mode: "none"/);
     // ...and must not re-suggest the thing this release deleted.
@@ -59,7 +64,7 @@ describe("opting out of the accessible alternative", () => {
     expect(message).not.toMatch(/mode: "audio"/);
   });
 
-  it("does not warn on the DEFAULT — the block is accessible without asking", async () => {
+  it("does not warn on the DEFAULT — the alternative ships without asking", async () => {
     const Shield = await freshShield();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     Shield({ children: BODY });

@@ -35,16 +35,18 @@ the few rules we actually enforce.
   be more legible than the page it sits in. That settles seventeen hosts
   and says nothing about the eighteenth.
   Four things remain open, and help on any of them is valued above
-  almost anything else:
-  - **JAWS is unverified.** Nobody has run it against this. Given how
+  almost anything else
+  ([#9](https://github.com/isaqueseneda/shieldfont/issues/9)):
+  - **JAWS is untested.** Nobody has run it against this
+    ([#9](https://github.com/isaqueseneda/shieldfont/issues/9)). Given how
     much the VoiceOver session changed, expect it to have its own list.
   - **A sighted keyboard user loses their focus indicator under
     `wrapper={false}`.** The drawn wrapper is the default and its
     buttons are real, visible and focus-visible; turn it off and the
     control is clipped off-screen, so Tabbing through the page without a
-    screen reader lands on something invisible — **WCAG 2.2 SC 2.4.7**.
-    `visualHidden: false` restores an on-screen control in that case,
-    which is an escape hatch and not an answer.
+    screen reader lands on something invisible. `visualHidden: false`
+    restores an on-screen control in that case, which is an escape hatch
+    and not an answer.
   - **The non-React tiers ship none of it.** The CDN paste-in and
     `@shieldfont/core` leave `aria-hidden` and the alternative entirely
     to the author. The puzzle primitive is already framework-free

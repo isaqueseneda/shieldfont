@@ -17,8 +17,7 @@
  * words on the screen, which is the entire question this library raises. So:
  *
  *   - a FAILURE here is proof of a defect;
- *   - a PASS here is not proof of conformance, and no document in this repo may
- *     use this run to claim one.
+ *   - a PASS here is not proof of conformance.
  *
  * The two things axe genuinely settles for us are contrast (SC 1.4.3) and
  * accessible names on the controls (SC 4.1.2), both of which were guesses.

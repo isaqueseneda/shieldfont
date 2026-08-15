@@ -4,6 +4,65 @@ All notable changes to ShieldFont. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Each entry records what changed in a release, in the words used at the time it
+shipped, and entries are not amended after publication. For where things stand
+now — accessibility in particular — read the
+[README](./README.md#accessibility) rather than an older entry here.
+
+---
+
+## [0.3.5] — 2026-08-16
+
+A documentation and wording release, plus one behavioural fix each for readers
+with JavaScript off and readers in Safari Reader. No API changed.
+
+### Added
+
+- **A `<noscript>` fallback.** Uncovering a block needs JavaScript, and until
+  now a page with it turned off said nothing about that. On the default tier
+  the Uncover button rendered normally and did nothing when pressed — a
+  screen-reader user was told a route to the words existed, handed a control
+  that named it, and got silence. Now the controls that cannot work are
+  removed and a `<noscript>` says why, in one sentence that retracts the
+  instruction before it. New `noScript` option on `wrapper` / `a11y`; set it
+  to `""` to drop it.
+
+### Fixed
+
+- **Safari Reader read the notice sentence twice.** The sentence ships in two
+  copies, one visible and one for screen readers. Safari Reader ignores
+  `aria-hidden`, so it kept the visible copy, and it detects only the legacy
+  `clip: rect()` form of hiding, so it kept the clipped one too. Adding
+  `clip: rect(0 0 0 0)` beside the existing `clip-path` leaves exactly one
+  copy in every reader mode, with no visual change anywhere.
+
+### Changed
+
+- **The accessibility wording across the project was corrected.** Several
+  documents described the pre-0.3.2 arrangement — a control that was
+  screen-reader-only, invisible, or in beta — when the visible notice has
+  been the default since 0.3.2. Others asserted as established fact a
+  reachability claim that came from a bug report and has never been
+  reproduced. Both are fixed, and [#2](https://github.com/isaqueseneda/shieldfont/issues/2)
+  is still credited for raising it.
+- **Reader Mode is now documented honestly, and it splits by browser.**
+  Firefox and Chrome drop a shielded block from Reader entirely; Safari
+  ignores the `aria-hidden` that does it and shows the scrambled version in
+  its own typeface. No markup excludes content from all three, and no
+  specification offers an opt-out.
+- **The CDN / paste-in tier is now labelled educational**, with
+  `@shieldfont/react` named as the route for a site you are shipping. That
+  tier cannot ship a complete alternative, because the original words are not
+  in the page on it at all.
+- **`@shieldfont/core` exported a stale `VERSION`.** It read `0.3.2` while the
+  package was at `0.3.4`.
+- Documentation fixes throughout: the root README never mentioned copying the
+  font files, so its quick start produced a blank page; the camouflage recipe
+  undercounted the font files a site needs; `<NonShield variant>` was
+  documented as a live bandwidth choice after being deprecated and ignored;
+  the audit command in the custom-font guide omitted a flag and failed on a
+  correct build; and several stated defaults did not match the code.
+
 ---
 
 ## [0.3.4] — 2026-08-04

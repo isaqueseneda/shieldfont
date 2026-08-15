@@ -15,8 +15,8 @@
  * ## What it costs the reader: nothing
  *
  * The browser is TOLD which payload is the block's own, so it solves exactly
- * one and waits exactly as long as it did before. The asymmetry is not
- * cryptographic and this file will not pretend otherwise: an attacker who reads
+ * one and waits exactly as long as it did before. The asymmetry here is
+ * practical rather than cryptographic: an attacker who reads
  * the emitted script can see the same thing the browser sees. With no server
  * there is no fact we hold that they cannot. What this buys is that a BULK
  * attacker pattern-matching for sealed blobs has to stop pattern-matching and

@@ -2,10 +2,10 @@
 
 The shared encoding/decoding logic for [ShieldFont](https://github.com/isaqueseneda/shieldfont): the AI-scraping-resistant web font.
 
-Zero runtime dependencies. Used by `@shieldfont/react` and any framework adapter you care to build.
+Zero runtime dependencies. Used by `@shieldfont/react` — the recommended route for a site you're shipping — and any framework adapter you care to build. Pasting its output into a page by hand is for learning.
 
 > [!CAUTION]
-> **ShieldFont harms accessibility, on purpose, and no setting turns that off.** It withholds the real text of a protected block from the page source, so a protected block **fails WCAG 2.2 SC 1.3.1**: the words are not programmatically available to assistive technology at all, and this package ships **none** of the accessible-alternative machinery that `@shieldfont/react` has — encode with it and the alternative is yours to build, or the content stays unwrapped. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site — or you claim WCAG conformance anywhere on it — don't encode content that claim covers. This is for an author's own essays, fiction and blog posts, by their own informed choice; not for government, procurement-bound or service-critical content. Full statement: [the accessibility warning](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility). What else it breaks for a human reader — copy-paste, find-in-page, translation, Reader Mode, forced fonts, feeds: [what protecting a block breaks](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
+> **ShieldFont is a v0 alpha.** This package ships none of the screen-reader machinery `@shieldfont/react` has, so that part is yours to build. If the ADA (including the Title II web rule), Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act 2010 applies to your site, or you claim WCAG conformance anywhere on it, don't use this on content that claim covers. Details: [Accessibility](https://github.com/isaqueseneda/shieldfont#accessibility).
 
 ## Install
 
@@ -53,7 +53,7 @@ word and digit rules in the table below are subtle enough that a hand-rolled
 ## HTML helpers
 
 ```ts
-import { encodeHtml, buildHtml, shipHtml, checkHtml, alpha } from "@shieldfont/core";
+import { encodeHtml, buildHtml, shipHtml, checkHtml, assertShipped, alpha } from "@shieldfont/core";
 
 // Encode a whole HTML document — preserves tags, skips <script>/<style>/<code>/<pre>/etc.
 const html = encodeHtml("<p>The future of writing belongs to those who write it.</p>", alpha);
@@ -67,8 +67,19 @@ const shipped = shipHtml(built);
 // → strips all shield-related comments. Deploy this output. Camouflage-clean.
 
 const result = checkHtml(built, alpha);
-// → { total, passed, failed, mismatches } — verify markers round-trip cleanly.
+// → { total, passed, failed, mismatches, unpairedBlocks } — verify the markers
+//   it FINDS round-trip cleanly.
+
+assertShipped(shipped);
+// → throws if any marker survived. This is the deploy gate, not checkHtml.
 ```
+
+**`assertShipped` is the gate; `checkHtml` cannot be.** `checkHtml` only
+verifies the markers it finds, so a page that was never built and a page shipped
+correctly both come back `{ total: 0, failed: 0 }` — total failure and success,
+spelled identically. If you do use it directly, read `unpairedBlocks` as well: a
+block missing its `<!-- shield-off -->` is never encoded at all, and that region
+ships in plain English while `failed` still reads `0`.
 
 ## What gets encoded (and what doesn't)
 
@@ -107,7 +118,7 @@ For first-time setup, wrap a region with block markers and run `buildHtml` once:
 <!-- shield-off -->
 ```
 
-Before deploying, run `shipHtml` to strip all `<!-- shield: ... -->` and `<!-- /shield -->` comments from the output. The shipped HTML contains zero ShieldFont signal.
+Before deploying, run `shipHtml` to strip all `<!-- shield: ... -->` and `<!-- /shield -->` comments from the output, then `assertShipped` on what you are about to write: it throws if a marker survived, which is the difference between a protected page and one that publishes your plain text beside its own decoy. The shipped HTML contains zero ShieldFont signal.
 
 ## Versioning & custom mappings
 
@@ -115,7 +126,7 @@ Every bundled mapping carries a `_meta` block, and the package exports its versi
 
 ```ts
 import { VERSION, alpha, mappingMeta } from "@shieldfont/core";
-VERSION;                        // "0.3.0"  (the npm package version)
+VERSION;                        // "0.3.5"  (the npm package version)
 mappingMeta(alpha)?.mappingId;  // "shieldfont-en-v18-alpha@0.1.0"  (the dictionary generation)
 ```
 
@@ -143,7 +154,8 @@ encode("hello world", mine);
 ⚠️ **A custom mapping needs a *matching* font.** The font renders each decoy back
 by the pairing baked in at font-build time, so the shipped `alpha`/`beta`/`gamma`/
 `maxhide` fonts render only their own pairs. To mint a private mapping + font, run
-`scripts/reseed_mapping.py --seed <n>` (re-pairs the v18 pool at your seed), then
+`scripts/reseed_mapping.py --seed <n> --out mine/mapping.json` (re-pairs the v18
+pool at your seed; `--out` is required), then
 build the matching font with `generate_font.py`. See `docs/custom-mappings.md`.
 
 ## Honest limits

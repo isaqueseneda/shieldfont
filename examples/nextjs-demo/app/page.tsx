@@ -30,9 +30,12 @@ export default function Page() {
       {/* <NonShield>: the same typeface, none of the protection. Headings stay
           real — once the body is a decoy, they are the only accurate text a
           search engine or a screen reader's heading list gets. You cannot get
-          this by setting font-family yourself: the shipped face carries the
+          this by setting font-family yourself: the shielded face carries the
           substitutions in its `ccmp` feature, so plain text set in it renders
-          the decoy. <NonShield> turns that off. */}
+          the decoy. <NonShield> does not disable that feature — no CSS can,
+          because Safari applies `ccmp` unconditionally. It loads a different
+          file under a different family: optik-n.woff2, the neutral cut, which
+          has no substitution lookups in it at all. */}
       <NonShield as="h2" weight={700} style={{ fontSize: "1.6rem", marginTop: "2.5rem" }}>
         Manifesto
       </NonShield>

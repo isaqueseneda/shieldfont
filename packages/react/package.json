@@ -1,7 +1,7 @@
 {
   "name": "@shieldfont/react",
-  "version": "0.3.4",
-  "description": "ShieldFont React component: encodes in Node so your original text never ships to the browser. Harms accessibility by design — a protected block fails WCAG 2.2 SC 1.3.1 even with every a11y feature on, because the real words are unavailable until the reader completes a 5-20s JavaScript unlock. Don't use it on content covered by the ADA, Section 508, the European Accessibility Act/EN 301 549 or the UK Equality Act 2010, or by any WCAG conformance claim.",
+  "version": "0.3.5",
+  "description": "ShieldFont React component. Encodes in Node, so your original text never ships in plain form. Screen readers get the real text: every protected block carries a visible notice with a button that shows it, on by default, tested with NVDA and VoiceOver. A v0 alpha. Accessibility law differs by country and applies to you as the site operator, so check yours first.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,7 +44,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@shieldfont/core": "^0.3.2"
+    "@shieldfont/core": "^0.3.5"
   },
   "peerDependencies": {
     "react": ">=18.0.0"

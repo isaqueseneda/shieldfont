@@ -287,7 +287,7 @@ def encode_word_preserve_case(w, mp):
 
 
 def encode_sentence(s, mapping):
-    """Mirror encode_site.py — encode each [a-zA-Z]+ word and each \\d digit
+    """Mirror encode_site.py (dev repo) — encode each [a-zA-Z]+ word and each \\d digit
     individually, preserving case for words.
     """
     word_re = re.compile(r"[a-zA-Z]+(?:'[a-zA-Z]+)?|\d")

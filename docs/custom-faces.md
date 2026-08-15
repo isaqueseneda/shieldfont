@@ -21,9 +21,13 @@ python3 scripts/generate_font.py \
   --prefix shieldfont-yourtypeface \
   --mapping-path scripts/v18alpha_for_font.json
 
-# Audit the build (optional but recommended):
+# Audit the build (optional but recommended). --mapping-id must match the id
+# the build used, or the audit hashes the expected glyph names with the wrong
+# salt and fails on a correct font. Here that id is "yourtypeface": the
+# --prefix minus "shieldfont-", because this mapping file carries no
+# `_meta.mappingId` of its own. audit_font.py defaults to "m15en".
 python3 scripts/audit_font.py --font public/fonts/shieldfont-yourtypeface.ttf \
-  --mapping scripts/v18alpha_for_font.json
+  --mapping scripts/v18alpha_for_font.json --mapping-id yourtypeface
 ```
 
 Outputs land in `public/fonts/` as `.ttf`, `.woff2`, and a ready `@font-face` CSS. The `--mapping-path` argument decides which dictionary the font decodes. The example above uses the shipped `alpha` pool; to build against a private mapping instead, mint one first and pass its path (see [Custom mappings](./custom-mappings.md)).

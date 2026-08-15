@@ -100,9 +100,13 @@ content-word substitutes, antonyms, and digit rotation (`1↔6`, `3↔8`,
 `4↔9`). Substring collisions inside larger words are prevented by the
 font's **fire-then-revert** GSUB structure: every ligature fires
 unconditionally, and a chained-context pass reverts substitutions that
-have a letter neighbor (i.e. fired inside a larger word). See the
-"How it works" section of the [README](./README.md#see-the-trick) and
-the [white paper](https://shieldfont.org/white-paper).
+have a letter neighbor (i.e. fired inside a larger word). The five lookups
+that implement it are built in
+[`scripts/generate_font.py`](./scripts/generate_font.py) —
+`build_gsub_word_boundary_ligatures` — and enumerated in the header of
+[`scripts/subset_font.py`](./scripts/subset_font.py), which has to prune
+all five symmetrically. The reader-facing version is in the
+[white paper](https://shieldfont.org/white-paper).
 
 The previous ≥4-char filter at `legacy/scripts/m15en_safe.json` is
 kept for forensic reproducibility but is no longer used in production.

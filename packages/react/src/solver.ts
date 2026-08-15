@@ -82,7 +82,8 @@
  *   inconsistency is the only reason the estimate and the milestones were heard
  *   at all. It bought nothing either way: nothing announces "busy" for a
  *   generic container, aria-disabled on the button already carries the state,
- *   and SC 4.1.3 is satisfied by the live region.
+ *   and the live region already tells assistive technology about every status
+ *   change.
  * - localStorage is a fast path only. It is read AFTER the button is shown and
  *   wired, which is load-bearing: the read used to sit above them and return
  *   early, so a cached value that failed to open removed itself and left the

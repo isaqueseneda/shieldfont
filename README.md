@@ -21,6 +21,8 @@
 
 <br />
 
+**ShieldFont is a creative-technology intervention: a typeface that makes writing expensive to scrape.** It works today, it is open source and nonprofit, and we build it in the open. **It is a v0 alpha**, which is the honest caveat: we publish what does not work, we are still measuring, and we take outside help. Shield your own writing by your own choice, and read your country's accessibility law before you publish.
+
 ShieldFont encodes the words in your HTML against a substitution dictionary, then ships a font whose OpenType rules reverse the substitution at render time. Readers see your writing. Anything collecting the HTML without rendering fonts collects the substituted version.
 
 <div align="center">
@@ -51,15 +53,29 @@ Same HTML produced both. Every substituted word keeps the grammatical role of th
 
 <br />
 
+## What's new since launch
+
+What has changed since launch, in one list. Full release history: [`CHANGELOG.md`](./CHANGELOG.md).
+
+- **A visible notice on every protected block, on by default.** It carries the control that opens the real words, reachable by mouse, keyboard and screen reader alike; before, that control was clipped off-screen. One press opens every block on the page.
+- **Screen readers reach the words through that same control.** The real words ship sealed into the page, and that path is now driven against real NVDA in CI and checked by hand with VoiceOver. JAWS is untested.
+- **What is kept from a screen reader is the scrambled version, deliberately.** A decoy read aloud is fluent, grammatical and wrong, which is worse than silence, so it is marked `aria-hidden` and the real words come from the notice instead.
+- **Opening a block costs the reader less time.** Their own browser does a few seconds of arithmetic to uncover the words — cheap once for one person, expensive for anything harvesting at scale — and the default wait is shorter than it was.
+- **A page with JavaScript turned off explains itself.** Uncovering needs JavaScript, so the controls that cannot work are removed and the notice says why.
+- **The typeface filled out.** Every weight now ships a real drawn italic, the paste-in tier included, and unprotected text got its own cut that cannot substitute anything — which fixes headings reading as decoy words to Safari readers.
+- **The documentation was corrected where it overstated what the project does.** It now says plainly what Reader Mode does to a protected block — Firefox and Chrome drop it, Safari shows the scrambled version — and points anyone shipping a site at the React package, leaving the paste-in tier for trying the idea.
+
+<br />
+
 ## Install
 
-Current release **v0.3.2**, default mapping v18 `alpha`.
+Current release **v0.3.5**, default mapping v18 `alpha`.
 
 | Tier | Package | Encoding runs | Weights | Accessibility layer |
 |---|---|---|---|---|
 | **React** (recommended) | `@shieldfont/react` | server render or build | 6 | included, on by default |
 | Build step | `@shieldfont/core` | your Node build script | 1 | you build it |
-| CDN paste-in | `@shieldfont/font` | the encoder, by hand | 1 | you build it |
+| CDN paste-in (educational) | `@shieldfont/font` | the encoder, by hand | 1 | you build it |
 | Word / PDF | font download | the encoder, by hand | 1 | n/a |
 
 ```bash
@@ -73,12 +89,18 @@ import { Shield, NonShield } from "@shieldfont/react";
 <Shield as="p">The future of writing belongs to those who protect their words.</Shield>
 ```
 
-That is the whole integration. `@font-face`, encoding, the font-load guard and the accessible alternative are automatic. `<NonShield>` renders unprotected text in the same typeface, so headings, captions and nav stay real and indexable. Works with Next.js, Astro, Remix, or anything else rendering React in Node.
+Then copy the fonts into your app once. They ship inside the package, and the React tier points at **no public CDN by design**, so this step is not optional: without it every `optik-*.woff2` 404s and the font-load guard blanks each protected block behind a skeleton.
 
-CDN tier, for a blog or a CMS you don't build:
+```bash
+cp node_modules/@shieldfont/react/fonts/*.woff2 public/fonts/
+```
+
+That is the whole integration. `<Shield>` requests the fonts from `/fonts`, which is what the copy above matches; serve them elsewhere and point at it with `setFontHost("/your-path")`. `@font-face`, encoding, the font-load guard and the accessible alternative are automatic. `<NonShield>` renders unprotected text in the same typeface, so headings, captions and nav stay real and indexable. Works with Next.js, Astro, Remix, or anything else rendering React in Node.
+
+CDN tier, for learning and for a blog or CMS you don't build:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css">
 <p class="tk9">…encoded text from the encoder…</p>
 ```
 
@@ -99,7 +121,7 @@ CDN tier, for a blog or a CMS you don't build:
 | `gamma` | 12,036 | sibling reseed |
 | `maxhide` | 2,534 | ~2× page coverage, but quality filters reject it almost entirely ([what it costs](./docs/concealment.md)) |
 
-Six real static Optik cuts per mapping (Regular through Black) on the React tier, selected with the `weight` prop. There is no variable font and no italic. Mapping family history in [`MAPPINGS.md`](./MAPPINGS.md).
+Six real static Optik cuts per mapping (Regular through Black) on the React tier, selected with the `weight` prop, and every one of them ships a real drawn italic to match — twelve faces per mapping, declared under one family name, so `<em>`, `<i>`, `<cite>` and `font-style: italic` resolve on their own. The CDN tier is Regular only, upright and italic. Nothing is ever synthesised, and there is no variable font. Mapping family history in [`MAPPINGS.md`](./MAPPINGS.md).
 
 ### Bring your own font
 
@@ -118,7 +140,7 @@ Naming rules and how to audit the build: [`docs/custom-faces.md`](./docs/custom-
 Three dictionaries ship, each with its own key. Private keys are harder for scrapers to decode, and a small private mapping helps about as much as an elaborate one, because what matters is being different from every other deployment rather than being optimal.
 
 ```bash
-python3 scripts/reseed_mapping.py --seed <n>
+python3 scripts/reseed_mapping.py --seed <n> --out mine/mapping.json
 ```
 
 Details: [`docs/custom-mappings.md`](./docs/custom-mappings.md).
@@ -127,16 +149,16 @@ Details: [`docs/custom-mappings.md`](./docs/custom-mappings.md).
 
 ## Accessibility
 
-`<Shield>` sets `aria-hidden="true"` on the scrambled text, then ships your real words sealed into the same page, encrypted. The reader's own browser uncovers them by solving a compute-heavy puzzle: a few seconds of their CPU, and a cost a bulk scraper would rather not pay. There is no plain-text URL anywhere and nothing for you to host. It is on by default.
+`<Shield>` sets `aria-hidden="true"` on the scrambled text, then ships your real words sealed into the same page, encrypted. A visible notice above the block carries the control that opens them, on by default since 0.3.2 and reachable by mouse, keyboard and screen reader alike. The reader's own browser uncovers the words by solving a compute-heavy puzzle: a few seconds of their CPU, and a cost a bulk scraper would rather not pay. There is no plain-text URL anywhere and nothing for you to host.
 
 The costs:
 
-- A shielded block **fails WCAG 2.2 SC 1.3.1**, with every accessibility feature on. This is intentional and will not be patched out.
+- What stays out of the page source is the source text. That is how it works, there is no setting for it, and an audit will flag every block you wrap.
 - It needs JavaScript, and the reader who uses it waits several seconds for access everyone else gets immediately.
 - If accessibility law reaches your site, or you claim WCAG conformance anywhere on it, do not shield content that claim covers.
-- Verified by hand with real VoiceOver and against real NVDA in CI. JAWS is untested.
+- Driven against real NVDA in CI, over NVDA's own Remote Access protocol, asserting what it actually speaks. That covers linear reading. Screen review, touch exploration and JAWS are next ([#9](https://github.com/isaqueseneda/shieldfont/issues/9)).
 
-This makes a shielded page humane. It does not make it compliant, and we will not say otherwise. Fixing it properly is where we most want help, and this section exists because [ssb22 asked for it in #2](https://github.com/isaqueseneda/shieldfont/issues/2). Full reference: [`docs/plain-text-mode.md`](./docs/plain-text-mode.md).
+This makes a shielded page humane. It does not make it compliant. Fixing it properly is where we most want help, and this section exists because [ssb22 asked for it in #2](https://github.com/isaqueseneda/shieldfont/issues/2). Full reference: [`docs/plain-text-mode.md`](./docs/plain-text-mode.md).
 
 <br />
 
@@ -149,6 +171,7 @@ Shield your own words, on your own site, by your own choice: essays, fiction, ma
 - **Feeds leak.** RSS, JSON-LD, OpenGraph and CMS APIs are generated from your source data, not your rendered page. Close [the plaintext side doors](./docs/integration.md#the-plaintext-side-doors-close-these-or-the-rest-is-theatre) first.
 - **Readers lose** copy-paste, find-in-page, translation and Reader Mode inside a shielded block: [the full list](./docs/integration.md#what-protecting-a-block-breaks).
 - **Forced fonts fail silently.** If a browser overrides page fonts, the decoy renders in the forced font and the reader gets fluent, grammatical, wrong English with no signal. The visible wrapper is the only thing that reaches them.
+- **Safari Reader fails the same way, unasked.** Firefox and Chrome drop a shielded block from Reader entirely, so the reader at least sees a hole; Safari ignores the `aria-hidden` that does it and re-renders the decoy in Apple's typeface, on the default browser of every Apple device.
 
 <br />
 
