@@ -66,6 +66,71 @@ with JavaScript off and readers in Safari Reader. No API changed.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A French mapping, `fr-v1-alpha`, and the pipeline that builds it.**
+  `scripts/build_fr_pairs.py` produces 5,415 logical pairs (10,830 entries)
+  from Lexique 3.83 at seed 42, with `benchmark/data/fr/` carrying the pairs
+  artifact and a per-pair audit CSV. It emits the v7 pairs schema, so
+  `scripts/reseed_mapping.py --pairs …` re-seeds a private French mapping
+  with no code change.
+
+  French needed its own pipeline rather than the language-code swap
+  `ROADMAP.md` describes, because a decoy has to agree in **gender** and
+  preserve **elision class**: `la maison` → `la livre` and `l'arbre` →
+  `l'maison` are ungrammatical, and ungrammatical text is filtered as noise
+  instead of read as prose, which is the whole mechanism. Both are bucket
+  dimensions; neither exists in English.
+
+  Morphology comes from Lexique rather than a tagger. An earlier draft used
+  spaCy and put `grandis` and `confesse` (verbs), `contemporaine` (an
+  adjective) and `dupuy` (a surname) in the feminine-noun bucket — a
+  contextual tagger cannot answer questions about context-free word forms,
+  and carrier frames make it worse, not better.
+
+- **`packages/core/test/encode-fr.test.ts`** — 16 tests over the French
+  artifact: involution, NFC, no apostrophe or single-letter keys, the
+  elision invariant across every pair, French round-trip, `aujourd'hui`
+  passing through unencoded, entity safety and the digit rule. The elision
+  test caught three real bugs in the hand-written special pairs, which
+  bypass the agreement buckets; `assemble_specials()` now enforces the
+  invariant at build time.
+
+- **Elision propagates across inflection, and is checked.** The hand list of
+  words that block elision was written as base forms while the mapping is
+  built from inflected ones, so listing `haie` protected nothing when the
+  pool held `haies`: 152 h-initial forms were classed as h-muet. Propagation
+  is by lemma, never by shared prefix — Lexique files `héroïne` under the
+  lemma `héros`, so it also needs an explicit override for the one
+  irregularity the list exists for. `ELISION_CONTROLS` pins 27 known-answer
+  cases on every build, because neither bug changed anything observable in
+  the output: a wrong elision class yields a mapping that is internally
+  consistent and merely ungrammatical on the page.
+
+- **The audit CSV is sorted by risk**, with a `priority` and a `why` column.
+  248 of 5,415 rows (P1–P3) carry the inferences worth a native reviewer's
+  time: 56 where gender came from the lemma rather than the form, 174
+  h-initial, 18 hand-written special pairs.
+
+### Notes
+
+**Nothing French ships in this release.** There is no French font — the
+Optik base needed to build one is Playtype's — so the mapping is not wired
+into `@shieldfont/core`, and a mapping without its font renders as visible
+decoy text. No native speaker has audited the pairs, and none of the NLI,
+KenLM or FineWeb-Edu benchmarks have been re-run for French, so no published
+number in this repository describes the French mapping.
+
+Lexique 3.83 is CC BY-SA 4.0. It is downloaded on demand and cached in
+`scripts/lexicon/` (gitignored) rather than vendored; only the derived
+mapping is committed. Whether that derived mapping counts as Adapted
+Material is flagged in `NOTICE` for a maintainer to decide rather than
+assumed away.
+
+---
+
 ## [0.3.4] — 2026-08-04
 
 The fix is in `@shieldfont/font`. `core` and `react` are byte-identical to

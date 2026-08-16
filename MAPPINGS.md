@@ -219,9 +219,20 @@ Portuguese (Soares), German (Lahl/Köper), Italian (Della Rosa).
 - **Cross-language M15-MULTI deployments.** The template exists at
   `m15_multi_universals.json` (M15-MULTI, in the development repo)
   and uses only operations that survive translation (noun pairing,
-  content antonyms, digit/calendar rotation). PT/ES/FR/DE/IT builds
+  content antonyms, digit/calendar rotation). PT/ES/DE/IT builds
   are the natural next targets, each with native linguist curation.
   See [`ROADMAP.md`](./ROADMAP.md).
+
+  **French is partly done and did not use the template.** `fr-v1-alpha`
+  (5,415 logical pairs, seed 42) is built by
+  [`scripts/build_fr_pairs.py`](./scripts/build_fr_pairs.py) from Lexique
+  3.83. It needed its own pipeline rather than a language-code swap,
+  because a French decoy must agree in **gender** and preserve **elision
+  class** — `la maison` → `la livre`, `l'arbre` → `l'maison` — and neither
+  constraint exists in English, so neither exists in the template. It
+  **does not ship**: there is no French font yet, and no native speaker has
+  audited the pairs. Nothing in this document's numbers describes it.
+  Provenance: [`benchmark/data/fr/README.md`](./benchmark/data/fr/README.md).
 
 - **Frontier-model H1 retest with M15-EN samples.** H1 was last retested
   in V3 with the M0..M11 family. Adding M15-EN to the frontier-model
