@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * `a11y={{ mode: "text" }}` — the time-lock plain-text control.
  *

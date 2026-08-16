@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Where the encoding happens (and how it leaks)
 
 There is exactly one rule in ShieldFont:

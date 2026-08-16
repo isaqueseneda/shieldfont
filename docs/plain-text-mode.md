@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # The plain-text mode
 
 `a11y={{ mode: "text" }}` gives a screen-reader user the real words of a

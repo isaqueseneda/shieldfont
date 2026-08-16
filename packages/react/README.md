@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # @shieldfont/react
 
 A React **server component** for [ShieldFont](https://github.com/isaqueseneda/shieldfont): encodes its children in Node — at build time or during server render — and ships only the encoded form to the browser, rendered through a bundled font.

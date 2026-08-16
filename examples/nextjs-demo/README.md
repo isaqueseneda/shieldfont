@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Next.js demo
 
 The smallest possible Next.js App Router page using `@shieldfont/react`.

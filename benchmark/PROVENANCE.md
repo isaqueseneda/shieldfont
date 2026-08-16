@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # PROVENANCE — every number in README.md → its source
 
 Paths under `benchmark/data/`, `scripts/`, or `packages/` are **in this repo**

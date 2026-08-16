@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * An axe scan of both rendered shapes — wrapper drawn and control clipped —
  * before and after the unlock.

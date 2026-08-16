@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Benchmark (public, minimal core)
 
 ShieldFont swaps ~1 in 4 words on a page (measured: **24.4%** of all tokens

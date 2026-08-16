@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Concealment & camouflage: choosing your tier
 
 > **Naming reminder.** *ShieldFont* is the protocol and project. *ShieldFont Optik* is the flagship typeface; *ShieldFont Optik Max* is its coverage-max sibling. See the [introduction](./introduction.md) for the full naming convention.

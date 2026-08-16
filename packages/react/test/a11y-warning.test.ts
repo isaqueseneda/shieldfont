@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * The dev-time warning for turning the accessible alternative OFF.
  *

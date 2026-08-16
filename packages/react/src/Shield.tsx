@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 import { encode, alpha, beta, gamma, m15en } from "@shieldfont/core";
 import type { Mapping } from "@shieldfont/core";
 import { DEFAULT_SECONDS, sealText } from "@shieldfont/core/puzzle";

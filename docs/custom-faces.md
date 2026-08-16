@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Custom faces: bring your own typeface
 
 > **Naming reminder.** Throughout this page: *ShieldFont* (CamelCase) is the protocol; *ShieldFont Optik* is the flagship typeface; *a ShieldFont* is any base font that has been converted using the protocol. See the [introduction](./introduction.md#a-note-on-names-protocol-vs-typeface) for the full naming convention.

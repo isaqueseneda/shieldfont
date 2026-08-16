@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# On the wording of commit 50311c1, see the message of the commit that added this line.
 """
 Strict ShieldFont-Optik audit.
 

@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Encoder structure (maintainer note): single source of truth
 
 If you are looking for "the encoder," it is `src/encode.ts`. Everything else is

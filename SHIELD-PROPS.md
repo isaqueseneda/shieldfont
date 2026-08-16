@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # `<Shield>` — every prop, in plain English
 
 Assumes you know nothing about the docs. Every behaviour below was **verified by

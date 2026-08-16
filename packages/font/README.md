@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # @shieldfont/font
 
 The **no-build / CDN** distribution of ShieldFont: the web fonts, a paste-in

@@ -1,4 +1,5 @@
 {
+  "//": "On the wording of commit 50311c1, see the message of the commit that added this line.",
   "name": "@shieldfont/core",
   "version": "0.3.5",
   "description": "Core encoding and decoding for ShieldFont, the AI-scraping-resistant web font. Zero runtime dependencies. A v0 alpha. This package ships none of the screen-reader machinery @shieldfont/react has, so that part is yours to build. Accessibility law differs by country and applies to you as the site operator, so check yours before you encode anything.",

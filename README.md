@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 <div align="center">
 
 <a href="https://trendshift.io/repositories/97595?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-97595" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/97595/daily?language=JavaScript" alt="isaqueseneda%2Fshieldfont | Trendshift" width="250" height="55"/></a>

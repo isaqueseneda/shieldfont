@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # CLAUDE.md: for AI co-pilots working on a ShieldFont-protected project
 
 > Drop this file at the root of your project. Claude / Cursor / GPT / Aider / any AI assistant will read it and follow these conventions. This file is deliberately just the rules; the explanations live in the linked docs, and every link is absolute so it keeps working after you copy the file into your own repo.

@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # README Assets
 
 Images used by the root `README.md`. Both are shipped, and both `<img>` tags in

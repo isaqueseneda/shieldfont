@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # AGENTS.md: how AI coding agents should use ShieldFont
 
 > This file ships inside every `@shieldfont/*` npm package. If you are an AI

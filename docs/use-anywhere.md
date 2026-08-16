@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Use ShieldFont anywhere: any framework, any build step
 
 Not using React? ShieldFont's engine is a tiny, zero-dependency JavaScript

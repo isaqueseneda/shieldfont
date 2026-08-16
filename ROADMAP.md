@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Roadmap
 
 The roadmap is a living document. Items here are our current best

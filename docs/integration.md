@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Integrating ShieldFont: the four tiers
 
 ShieldFont ships in four flavors depending on how you build pages. Pick the one that matches your stack:

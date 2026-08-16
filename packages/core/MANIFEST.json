@@ -1,4 +1,5 @@
 {
+  "//": "On the wording of commit 50311c1, see the message of the commit that added this line.",
   "_comment": "Maps each encoder-mapping VARIANT to its built font. The mapping JSON at src/mappings/<variant>.json is EMITTED by scripts/generate_font.py (post make_injective) \u2014 it IS the exact mapping the font was built from, so encoder and font can never diverge. DO NOT hand-edit the mapping files. Add beta/gamma entries here when their fonts are built.",
   "_comment_version": "The `version` field below is the DICTIONARY GENERATION stamp, not the npm package version. scripts/stamp_mapping_meta.py mirrors it into each mapping's _meta.version / mappingId, so it must only move when the word pairs are rebuilt and the fonts re-emitted. The packages version independently (currently 0.3.5); see packages/core/src/index.ts. Bumping this by hand without re-running the font build would make the mappings claim a generation no shipped font matches.",
   "version": "0.1.0",

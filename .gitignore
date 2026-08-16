@@ -1,3 +1,4 @@
+# On the wording of commit 50311c1, see the message of the commit that added this line.
 # macOS — explicitly recursive: git already applies a bare pattern at every
 # depth, but examples/ and packages/ each grow their own, so spell it out.
 **/.DS_Store

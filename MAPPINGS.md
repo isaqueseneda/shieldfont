@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Mappings: M0 through M15
 
 The "mapping" is the dictionary that tells ShieldFont **which words to swap

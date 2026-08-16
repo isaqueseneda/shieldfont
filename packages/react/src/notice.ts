@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * The reader-facing notice — the visible half of the accessible plain-text path.
  *

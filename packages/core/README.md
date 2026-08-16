@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # @shieldfont/core
 
 The shared encoding/decoding logic for [ShieldFont](https://github.com/isaqueseneda/shieldfont): the AI-scraping-resistant web font.
