@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Use ShieldFont anywhere: any framework, any build step
 
 Not using React? ShieldFont's engine is a tiny, zero-dependency JavaScript
@@ -5,6 +6,9 @@ library: **`@shieldfont/core`**. Call it wherever you already generate HTML: a
 Vue/Svelte/Angular server render, an Astro/11ty/Hugo/Jekyll build, a Python or
 Ruby template (via a subprocess), a Cloudflare/Vercel build step: anywhere the
 encoding runs **before the bytes reach the browser**.
+
+`@shieldfont/react` is the recommended route for a site you're shipping. This
+page is for learning ShieldFont and for stacks where React isn't an option.
 
 > **What you get here is a library and a recipe, not a plugin.** There is no
 > Eleventy plugin, Astro integration or Vue directive shipped today — the
@@ -103,6 +107,7 @@ options.
 ```bash
 npm install @shieldfont/font
 cp node_modules/@shieldfont/font/optik-a.woff2 public/fonts/
+cp node_modules/@shieldfont/font/optik-a-italic.woff2 public/fonts/
 ```
 
 ```css
@@ -112,6 +117,17 @@ cp node_modules/@shieldfont/font/optik-a.woff2 public/fonts/
   font-weight: 400;    /* Regular is the only weight this package ships */
   font-style: normal;
   font-display: block; /* block, not swap — no decoy flash before the font loads */
+}
+@font-face {
+  /* Same family name on purpose: that is what lets <em>, <i>, <cite> and a
+     plain `font-style: italic` resolve to it. Copy this file too — with
+     `font-synthesis: none` below, a missing italic renders UPRIGHT and logs
+     nothing. */
+  font-family: 'Optik';
+  src: url('/fonts/optik-a-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
 }
 .tk9 {
   font-family: 'Optik', system-ui, sans-serif;
@@ -130,7 +146,7 @@ cp node_modules/@shieldfont/font/optik-a.woff2 public/fonts/
 **Or CDN (zero setup, version-pinned):**
 
 ```css
-@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css');
+@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css');
 ```
 
 The CDN bundle already declares `@font-face` for `'Optik'` and ships the `.tk9`
@@ -144,13 +160,21 @@ silently break existing encoded pages.
 
 Those four files are the four *mapping variants* at one weight: **Regular,
 `font-weight: 400`**. The letter picks the dictionary, not the cut. There is no
-Medium, DemiBold, Bold, ExtraBold or Black in this package, and no italic, which
-is why the `@font-face` above declares `400` and the class sets
-`font-synthesis: none`. Without that, asking for `font-weight: bold` inside a
-`.tk9` element makes the browser draw a synthetic bold, and a synthesised weight
-distorts the composite glyphs enough to give away that decoys are in play. Style
-headings and emphasis in an ordinary font instead, and keep the shielded
-paragraphs at Regular.
+Medium, DemiBold, Bold, ExtraBold or Black in this package, which is why the
+`@font-face` above declares `400` and the class sets `font-synthesis: none`.
+Without that, asking for `font-weight: bold` inside a `.tk9` element makes the
+browser draw a synthetic bold, and a synthesised weight distorts the composite
+glyphs enough to give away that decoys are in play. Style headings and bold
+emphasis in an ordinary font instead, and keep the shielded paragraphs at
+Regular.
+
+**Italic is the exception: it ships here.** Each of those four files has an
+`-italic` companion at Regular — `optik-a-italic.woff2` and so on — declared
+under the *same* family name as its upright, which is what lets `<em>`, `<i>`,
+`<cite>` and a plain `font-style: italic` inside a `.tk9` element resolve to a
+real drawn italic with nothing to opt into. The neutral cut ships both styles
+too. There is no *bold* italic, for the same reason there is no bold: the cut
+does not exist.
 
 **Six real weights ship, but only in `@shieldfont/react`.** That package bundles
 genuine Playtype static cuts for every mapping variant:
@@ -257,22 +281,25 @@ the SSR + font-load-guard pattern worth copying.
 ## Honest caveats (same for every integration)
 
 - **SEO:** search engines index the *decoy*. Never wrap content you want to rank.
-- **Accessibility: a protected block fails WCAG 2.2 SC 1.3.1** and an audit will
-  flag it. If your site is covered by the ADA (including the Title II web rule),
-  Section 508, the European Accessibility Act / EN 301 549 or the UK Equality Act
-  2010, or you claim WCAG conformance anywhere, don't wrap content that claim
-  covers. Read
-  [the warning](../README.md#-read-this-first-shieldfont-breaks-accessibility)
-  before you ship.
+- **Accessibility:** this tier ships no screen-reader alternative, so that part
+  is yours to build. Bringing the non-React tiers up to the React one is on the
+  roadmap. If accessibility law reaches your site, check it before you wrap
+  anything.
 - **Screen readers** don't read protected regions in normal linear or heading
-  navigation: `<Shield>` hardcodes `aria-hidden="true"` with no opt-out, so a
-  listener going down the page hears silence rather than a fluent wrong
-  paragraph. Exploration by mouse or touch can still surface decoy words. Beside
+  navigation: `<Shield>` hardcodes `aria-hidden="true"` with no opt-out, so
+  **reading down the page a screen reader is never handed the scrambled
+  version** and a listener hears silence rather than a fluent wrong paragraph.
+  Our NVDA test asserts that. Screen review and touch exploration work
+  differently and we have no automated coverage of them;
+  [#2](https://github.com/isaqueseneda/shieldfont/issues/2) reported a decoy
+  could be reached that way and we have not reproduced it. If you can test it
+  properly: [#9](https://github.com/isaqueseneda/shieldfont/issues/9). Beside
   the hidden block it ships the real words encrypted in the page for the reader's
   browser to unlock — never a link, which would be a one-line bypass for any
-  scraper that follows it. It needs JavaScript, and an invisible control costs a
-  sighted keyboard user their focus indicator (WCAG 2.2 SC 2.4.7); the numbers
-  and the rest of the limits are in
+  scraper that follows it. It needs JavaScript, and since 0.3.2 the control is
+  **drawn on screen by default**; with `wrapper={false}` it reverts to
+  screen-reader-only and a sighted keyboard user loses their focus indicator.
+  The numbers and the rest of the limits are in
   [`plain-text-mode.md`](./plain-text-mode.md). **Every integration on this page
   is outside React**, so none of that is automatic here: set `aria-hidden` on the
   encoded region yourself and give it an alternative, or leave that content

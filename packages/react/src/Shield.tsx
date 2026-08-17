@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 import { encode, alpha, beta, gamma, m15en } from "@shieldfont/core";
 import type { Mapping } from "@shieldfont/core";
 import { DEFAULT_SECONDS, sealText } from "@shieldfont/core/puzzle";
@@ -6,6 +7,7 @@ import * as React from "react";
 import { solverScript } from "./solver.js";
 import {
   altCss,
+  DEFAULT_NOSCRIPT,
   DEFAULT_TEXT,
   ICONS,
   clipboardNotice,
@@ -113,14 +115,14 @@ export interface RotateConfig {
  * synthesise and host themselves, which is the whole problem: it was the one
  * mode that asked for work outside the build, so almost nobody did it, and a
  * mode nobody configures is not an accessible alternative. Worse, the ones who
- * did configure it were not covered either — audio-only content with no text
- * alternative fails WCAG 2.2 SC 1.2.1 (Level A), and the text mode never
- * rescued it because the two were separate alternatives an author chose
- * BETWEEN, not a pair. So it charged the author real work for an alternative
- * that did not stand up as one. `{ mode: "text" }` asks nothing of them and
- * ships words rather than sound, so 1.2.1 does not arise for it — which is not
- * a conformance claim for anything else in this package; read the warning in
- * the README. Passing `{ mode: "audio" }` is a type error now, and an author who
+ * did configure it were not covered either — a recording with no text beside it
+ * leaves a deaf reader with nothing, and the text mode never rescued it
+ * because the two were separate alternatives an author chose BETWEEN, not a
+ * pair. So it charged the author real work for an alternative that did not
+ * stand up as one. `{ mode: "text" }` asks nothing of them and ships words
+ * rather than sound, so that gap does not arise for it — which says nothing
+ * about anything else in this package; read the warning in the README. Passing
+ * `{ mode: "audio" }` is a type error now, and an author who
  * wants a recording can put an `<audio>` element beside the block themselves.
  * Nothing here ever stopped them, and doing it by hand at least makes the
  * transcript their decision rather than this library's omission.
@@ -133,8 +135,9 @@ export interface RotateConfig {
  *
  * What replaces it inverts that. The words ship in the page but ENCRYPTED, and
  * the key is not in the page either — it is the answer to a puzzle that takes a
- * deliberate, tunable amount of the reader's CPU to grind out (default 20
- * seconds; see {@link DEFAULT_SECONDS} in `@shieldfont/core/puzzle` for how that
+ * deliberate, tunable amount of the reader's CPU to grind out (default 14
+ * seconds budgeted against a reference device, ~2.5 s measured on a current
+ * desktop; see {@link DEFAULT_SECONDS} in `@shieldfont/core/puzzle` for how that
  * number was chosen against the cost of OCR). Nobody is denied the text. The
  * accessible path simply stops being the CHEAPEST path into it, which is the
  * only property that ever mattered.
@@ -142,7 +145,7 @@ export interface RotateConfig {
  * What it does not fix, said plainly: a crawler that wants the words can still
  * render the page and OCR the pixels for less than the puzzle costs. OCR is the
  * floor on this package's protection and no amount of cryptography raises it.
- * And a reader who needs this waits twenty seconds for words every other reader
+ * And a reader who needs this waits a few seconds for words every other reader
  * already has, which is unequal access however carefully it is engineered.
  */
 export type ShieldA11y =
@@ -161,6 +164,20 @@ export type ShieldA11y =
       seconds?: number;
       /** Overrides the default explanatory sentence for this block. */
       note?: string;
+      /**
+       * Overrides the `<noscript>` sentence — the one that retracts {@link
+       * note} for a reader whose browser is not running scripts.
+       *
+       * Default {@link DEFAULT_NOSCRIPT}. Set it to `""` to emit nothing. It is
+       * the same string, and the same reasoning, as the drawn tier's
+       * `wrapper={{ noScript }}`; see {@link ShieldNotice.noScript}.
+       *
+       * Whatever you pass, do NOT put a URL in it. `<noscript>` content sits in
+       * the page source unconditionally, so a link to a plain-text copy is
+       * handed to every crawler whether it runs scripts or not — the exact leak
+       * the removed 0.2.0 `href` mode was.
+       */
+      noScript?: string;
       /**
        * Where the unlocked words go.
        *
@@ -199,9 +216,9 @@ export type ShieldA11y =
        * through the font, so an on-screen widget explaining an unlocking
        * mechanism is, to them, attached to text that looks fine.
        *
-       * Pass `false` to put it back on screen. Do that if you need WCAG 2.2 SC
-       * 2.4.7: while hidden, a sighted keyboard user Tabs into a control they
-       * cannot see and their focus indicator disappears.
+       * Pass `false` to put it back on screen. Do that if a sighted keyboard
+       * user has to keep a visible focus indicator: while hidden, they Tab into
+       * a control they cannot see and the indicator disappears.
        */
       visualHidden?: boolean;
     }
@@ -396,9 +413,9 @@ export interface ShieldProps {
    * What it buys is the difference between a block a screen reader skips in
    * silence and one a reader can actually get the words out of. Turning it off
    * is a real choice with a real cost — the region becomes `aria-hidden` with
-   * no alternative, which fails WCAG 2.2 SC 1.3.1 on any reading, and under the
-   * EU Accessibility Act or the ADA Title II web rule that is a procurement
-   * blocker rather than an ethics question.
+   * no alternative beside it, so assistive technology gets nothing from that
+   * block at all, and rules such as the EU Accessibility Act and the ADA Title
+   * II web rule set requirements a site has to meet on exactly that point.
    *
    * Set it to `false` only if you have decided that and can say why.
    */
@@ -1030,9 +1047,9 @@ export function withShieldRenderPass<T>(render: () => T): T {
  * Self-hosting fixes this:
  *   1. The font ships with your build, never disappears.
  *   2. If it ever does fail to load, the bundled font-load guard (below)
- *      detects it within a few seconds and visibly replaces every
- *      protected element with "Content unavailable" — never with the
- *      raw decoy text.
+ *      detects it within a few seconds and visibly blanks every protected
+ *      element — transparent text behind a striped skeleton — never leaving
+ *      the raw decoy text on screen.
  *
  * Setup (one time, in your app's `public/` directory or equivalent):
  *
@@ -1144,8 +1161,9 @@ function nearestCut(value: number): number {
  * other cut carries a numeric suffix (`optik-a-700.woff2`). Italics take an
  * `-italic` infix BEFORE the weight, so one style's six faces sort together:
  * `optik-a-italic.woff2`, `optik-a-italic-700.woff2`. Same rule for
- * camouflaged prefixes, and `scripts/build_italic_cuts.py:out_name()` is the
- * build side of the same contract — change one and you must change the other.
+ * camouflaged prefixes, and `scripts/build_italic_cuts.py:out_name()` (dev
+ * repo) is the build side of the same contract — change one and you must
+ * change the other.
  */
 function faceFile(prefix: string, numeric: number, italic: boolean): string {
   const style = italic ? "-italic" : "";
@@ -1304,9 +1322,10 @@ export function currentCamo(): { camo: CamouflageState; fontHost: string } {
  *
  * Watches `document.fonts` for the ShieldFont family AT EVERY WEIGHT THE PAGE
  * ACTUALLY USES. If any of those faces fails to register and load within 4
- * seconds, it visibly replaces every element carrying `[data-typeface]` (the
- * default camo attr) with a "Content unavailable" message and logs a clear
- * console error pointing at the configured fontHost. The replacement is a
+ * seconds, it visibly blanks every element carrying `[data-typeface]` (the
+ * default camo attr) — the text goes transparent behind a striped skeleton that
+ * keeps the block's box — and logs a clear console error pointing at the
+ * configured fontHost. It substitutes no message of its own. The blanking is a
  * stylesheet rather than a DOM rewrite, so React hydration cannot put the
  * decoy back (see `fail()`).
  *
@@ -1961,10 +1980,10 @@ function warnIfClientRender(): void {
 // grammatical, WRONG English with nothing to signal that anything is off — worse
 // than silence, because it does not announce itself as broken.
 //
-// But silence is not a fix either. Either way, what a sighted reader perceives
-// is not programmatically determinable, which fails WCAG 2.2 SC 1.3.1 on any
-// reading. Under the EU Accessibility Act or the ADA Title II web rule that is a
-// procurement blocker, not an ethics question.
+// But silence is not a fix either. Either way, the words a sighted reader sees
+// would be nowhere in the accessibility tree, and rules such as the EU
+// Accessibility Act and the ADA Title II web rule set requirements a site has
+// to meet on exactly that point.
 //
 // So the fix is not to un-hide. It is to put a REAL alternative next to the
 // block, outside the hidden subtree and before it in DOM order, so linear
@@ -1991,12 +2010,12 @@ function warnIfClientRender(): void {
 //   - The text mode needs JavaScript, BigInt, crypto.subtle and a secure
 //     origin. It is the one part of this package that does not survive JS being
 //     off, and the font does the rest of the work without any of it.
-//   - The control is invisible by default, so a SIGHTED keyboard user Tabs into
-//     something they cannot see and loses their focus indicator — WCAG 2.2 SC
-//     2.4.7. Deliberate; `visualHidden: false` puts it back on screen.
+//   - Under `wrapper={false}` the control is clipped, so a SIGHTED keyboard
+//     user Tabs into something they cannot see and loses their focus
+//     indicator. Deliberate; `visualHidden: false` puts it back on screen.
 //   - A reader who needs this waits while everyone else reads immediately. That
-//     is unequal access however carefully it is engineered, and calling it
-//     solved would be a lie.
+//     is unequal access however carefully it is engineered — a compromise, not
+//     a solution.
 //
 // Nearly every detail of the markup below was settled by listening to it with a
 // real screen reader rather than by reasoning about the spec. Where that is
@@ -2091,11 +2110,11 @@ function warnIfNoA11y(): void {
   warnedMissingA11y = true;
   console.warn(
     `${camo.logPrefix} <Shield> is rendering with the accessible alternative turned OFF ` +
-      `(screenReader={false}, or a11y={{ mode: "none" }}). The encoded block is aria-hidden, so ` +
-      `assistive technology reads NOTHING there — what a sighted reader perceives is not ` +
-      `programmatically available (WCAG 2.2 SC 1.3.1). That is a defensible choice only if you ` +
-      `made it deliberately. The default is screenReader={true} (equivalently a11y={{ mode: "text" }}), ` +
-      `which seals the original words ` +
+      `(screenReader={false}, or a11y={{ mode: "none" }}). The encoded block is aria-hidden and ` +
+      `nothing ships beside it, so assistive technology gets NOTHING from that block — no words, ` +
+      `no notice and no control, and the reader is given no sign that anything is missing. That ` +
+      `is a defensible choice only if you made it deliberately. The default is ` +
+      `screenReader={true} (equivalently a11y={{ mode: "text" }}), which seals the original words ` +
       `into the page at build time and lets a reader who needs them decode them in their own ` +
       `browser. Do NOT reach for browser speechSynthesis instead: it needs your original text in ` +
       `the browser, which is the leak this package exists to prevent.`,
@@ -2147,7 +2166,8 @@ function renderA11y(
   // reader who meets both tiers on one site should not be told the same fact
   // two ways.
   const openNote = "You are now reading the original text.";
-  // DEFAULT: the whole control is screen-reader-only.
+  // This function only runs where the drawn wrapper is off, and there
+  // `visualHidden` defaults to true: the whole control is clipped off-screen.
   //
   // A sighted reader can already read the block perfectly — the font does that
   // work — so a note and a button explaining an unlocking mechanism are, to
@@ -2155,8 +2175,8 @@ function renderA11y(
   //
   // KNOWN COST, and it is a real one: a sighted person navigating by keyboard
   // without a screen reader will Tab into a control they cannot see, and their
-  // focus indicator vanishes (WCAG 2.2 SC 2.4.7). The standard remedy is the
-  // skip-link pattern — clipped until focused, visible while focused — which
+  // focus indicator vanishes. The standard remedy is the skip-link pattern —
+  // clipped until focused, visible while focused — which
   // this deliberately does NOT do, because it was asked to be invisible.
   // `visualHidden: false` restores an on-screen control.
   const hideWrap = a11y.visualHidden ?? true;
@@ -2165,6 +2185,11 @@ function renderA11y(
   // gets the short form. See {@link A11Y_NOTE_REPEAT} for why.
   const firstOfPage = claim("notes", "long");
   const note = a11y.note ?? (firstOfPage ? A11Y_NOTE : A11Y_NOTE_REPEAT);
+  // NOT shortened on later blocks the way `note` is. The short form is a
+  // reminder of something already said; this is the only statement of a fact
+  // that has not been said at all, and a reader may well meet block four first.
+  // `??`, so `noScript: ""` is an author switching it off.
+  const noScript = a11y.noScript ?? DEFAULT_NOSCRIPT;
 
   // Bare data attributes as hooks for the solver script. Names derive from the
   // camouflage attr, so a project that called setCamouflage({ hash }) has no
@@ -2235,6 +2260,20 @@ function renderA11y(
           // for the open-state one without React putting it back. See textHtml.
           dangerouslySetInnerHTML={textHtml(note)}
         />
+        {/*
+          The retraction, directly after the sentence it retracts — same
+          placement and same reasoning as the drawn tier's. It matters slightly
+          more here: this tier's button ships `hidden` plus an inline
+          `display:none` and is un-hidden only after the solver's capability
+          gate, so with scripts off the note points at a control that is not in
+          the accessibility tree at all.
+
+          `<noscript>` is phrasing content, so this is valid in both renders —
+          inside the block <div>/<span> pair and inside the inline `as="span"`
+          one, where the enclosing element is a <span> and a non-phrasing
+          sibling would have closed the host paragraph early.
+        */}
+        <NoScriptNote text={noScript} />
       </span>
       {renderPuzzle(
         a11y.seconds,
@@ -2387,6 +2426,83 @@ function textHtml(text: string): { __html: string } {
 }
 
 /**
+ * ── THE `<noscript>` PAIR ────────────────────────────────────────────────────
+ *
+ * With scripts off the unlock cannot run: it needs JavaScript, `BigInt` and
+ * `crypto.subtle`. What a reader in that state met before these existed was a
+ * sentence telling them to uncover the text, and — on the drawn tier — a real,
+ * visible, focusable Uncover button that does absolutely nothing. No
+ * navigation, no error, no state change. A screen-reader user hears it
+ * announced ("Uncover the original text, takes a few seconds"), activates it,
+ * and gets silence. On the clipped tier the button ships `hidden` plus an
+ * inline `display:none` and is un-hidden only by the solver's capability gate,
+ * so the same sentence points at a control that is not in the tree at all.
+ *
+ * Two elements answer that, and they are deliberately separate jobs:
+ *
+ *   {@link NoScriptStyle} removes every dead control on the page, in CSS, with
+ *   ZERO English. Both tiers park their buttons inside `[attr-acts]`, so one
+ *   rule reaches both. It is emitted beside the notice/alt stylesheet, once per
+ *   page per tier, under the same claim.
+ *
+ *   {@link NoScriptNote} says why, once per block, immediately after the
+ *   sentence it retracts.
+ *
+ * `dangerouslySetInnerHTML` IS MANDATORY IN BOTH, NOT STYLISTIC. React's server
+ * renderer emits `<noscript>` children as elements; the client parser, with
+ * scripting enabled, turns the contents of a `<noscript>` into a single raw
+ * TEXT node. Those two trees do not match, so children written as JSX are a
+ * hydration mismatch on every block. An element with `dangerouslySetInnerHTML`
+ * has no child fibers at all, so React skips the subtree and the question never
+ * arises — the same instrument {@link EMPTY_HTML} and {@link textHtml} use, for
+ * the same reason.
+ *
+ * NOTHING HERE IS MUTATED BEFORE HYDRATION, which is the other trap this file
+ * has been bitten by (see the note on the two-span sentence in NoticeStrip:
+ * the clipped half used to ship `hidden` for the script to clear, and React
+ * found an attribute in its server HTML that was gone from the DOM and reported
+ * a mismatch it "won't patch up"). Neither element ships `hidden`, neither is
+ * addressed by any emitted script — grep the three script builders for
+ * `noscript` and there is nothing — and the browser decides what a `<noscript>`
+ * shows on its own, with no DOM write and no attribute flip. The server HTML
+ * and the client render are byte-identical in every state.
+ */
+function NoScriptStyle({ attr }: { attr: string }) {
+  // `attr` is validated by setCamouflage against /^data-[a-zA-Z0-9-]+$/ — the
+  // same guarantee every other emitted selector in this package rests on — so
+  // it cannot carry a bracket, a quote or a `</` out of the <style>.
+  return (
+    <noscript
+      dangerouslySetInnerHTML={{ __html: `<style>[${attr}-acts]{display:none !important}</style>` }}
+    />
+  );
+}
+
+/**
+ * The sentence, for one block.
+ *
+ * `text` is a module constant by default and author-supplied otherwise, so it
+ * goes through {@link textHtml} — the same escape the clipped tier's note
+ * already uses for exactly this reason. Empty string renders nothing, which is
+ * how `noScript: ""` turns the whole thing off.
+ *
+ * `mute` marks it `aria-hidden`, and only the repeated bottom strip passes it:
+ * that strip's own sentence is already `aria-hidden` (the lead strip owns the
+ * spoken copy), so an unmuted retraction there would be read to a listener a
+ * second time. Same invariant the rest of this component keeps — the
+ * explanation reaches a listener exactly once per state.
+ */
+function NoScriptNote({ text, mute }: { text: string; mute?: boolean }) {
+  if (!text) return null;
+  return (
+    <noscript
+      {...(mute ? { "aria-hidden": "true" as const } : {})}
+      dangerouslySetInnerHTML={textHtml(text)}
+    />
+  );
+}
+
+/**
  * A Lucide glyph. `d` is always a module constant from {@link ICONS}, never
  * anything an author supplies, so the inner HTML is not a surface.
  */
@@ -2435,8 +2551,8 @@ function StateIcons({ attr }: { attr: string }) {
  * the clipped path grew its own copy.
  *
  * `label` is the VISIBLE word, or nothing for an icon-only control. `name` is
- * what a screen reader says, and it must begin with `label` where there is one
- * (WCAG 2.2 SC 2.5.3) so a speech-input user can say what they can see.
+ * what a screen reader says, and it must begin with `label` where there is one,
+ * so a speech-input user can say what they can see.
  */
 function ActionButton({
   attr,
@@ -2585,8 +2701,8 @@ function NoticeStrip({
    * the fastest way any of them moves around a page — got a column of identical
    * rows and no way to tell which paragraph any of them belonged to.
    *
-   * The visible label stays the first thing in the name, so SC 2.5.3 (Label in
-   * Name) holds: speech-input users can still say "click Original text".
+   * The visible label stays the first thing in the name, so speech-input users
+   * can still say "click Original text".
    */
   // Every control's NAME carries the fact, not just the verb. A name is the one
   // thing a screen reader never suppresses; the full sentence rides along as
@@ -2615,8 +2731,8 @@ function NoticeStrip({
   // Action and position lead, so the reader knows what they have landed on
   // before the explanation starts.
   // The spoken name may elaborate on the visible label, but it must BEGIN with
-  // it — SC 2.5.3, so "click Uncover" works in voice control. An author who
-  // renames the button without renaming its long form gets their own words
+  // it, so "click Uncover" works in voice control. An author who renames the
+  // button without renaming its long form gets their own words
   // back rather than a name that no longer matches what they can see.
   const spokenShow = notice.labels.showLong.startsWith(notice.labels.show)
     ? notice.labels.showLong
@@ -2759,6 +2875,21 @@ function NoticeStrip({
             {lead && firstOnPage ? notice.text : notice.repeat}
           </span>
         </span>
+        {/*
+          THE RETRACTION, directly after the sentence it retracts.
+
+          Without scripts the two buttons to the right are inert — see the note
+          above NoScriptStyle — so the sentence above ("please uncover the text
+          before reading") is an instruction with nothing behind it. This is the
+          only thing on the page that says so, and it is placed here rather than
+          anywhere else so that reading straight down, by eye or by ear, gives
+          instruction then retraction with nothing in between.
+
+          `<noscript>` is phrasing content, so it is valid inside this <span> —
+          which is also what makes the inline `as="span"` render legal on the
+          other tier.
+        */}
+        <NoScriptNote text={notice.noScript} mute={!lead} />
         {/*
           Copy confirmation, laid OVER the sentence rather than beside it, so
           the strip never changes height when it appears. aria-hidden because
@@ -3165,7 +3296,7 @@ export function Shield(props: ShieldProps) {
   // statement of intent.
   //
   // The default for `screenReader` is TRUE, and that is a deliberate change of
-  // posture: a block whose alternative is opt-in ships inaccessible for every
+  // posture: a block whose alternative is opt-in ships without one for every
   // author who never read the docs, which is most of them. `a11y:{mode:"none"}`
   // and `screenReader:false` are the two ways to say no, and both are explicit.
   // ONE DERIVATION, USED EVERYWHERE. This used to be computed twice — once here
@@ -3349,13 +3480,17 @@ export function Shield(props: ShieldProps) {
   // the grounds this file states everywhere else: a silent behaviour change is
   // the failure mode that costs the most and is noticed the latest.
   if (wantsNotice && a11y) {
-    const inert = (["reveal", "visualHidden", "label", "note"] as const).filter(
+    const inert = (["reveal", "visualHidden", "label", "note", "noScript"] as const).filter(
       (k) => (a11y as Record<string, unknown>)[k] !== undefined,
     );
+    // The two keys that are pure WORDING have an exact counterpart on the
+    // wrapper, so a lone one of them gets pointed straight at it rather than at
+    // the generic paragraph below. `noScript` keeps its name on both sides.
+    const WORDING: Record<string, string> = { note: "text", noScript: "noScript" };
     if (inert.length) {
       const fix =
-        inert.length === 1 && inert[0] === "note"
-          ? `Move it to wrapper={{ text: … }}.`
+        inert.length === 1 && WORDING[inert[0]]
+          ? `Move it to wrapper={{ ${WORDING[inert[0]]}: … }}.`
           : `Move any wording to wrapper={{ text: … }}, and use wrapper={false} ` +
             `if you want the off-screen control these settings were written for.`;
       const one = inert.length === 1;
@@ -3513,8 +3648,9 @@ export function Shield(props: ShieldProps) {
       // boundary plus a sentence on its own stop is one telling, in the right
       // order.
       //
-      // WCAG 2.2: this is what makes SC 1.3.1 defensible rather than merely
-      // argued, and it is the SC 2.4.6 story for the block as a whole.
+      // This is what makes the arrangement defensible rather than merely
+      // argued: entering the block announces a boundary, and the sentence that
+      // explains it is heard once, on its own stop, rather than twice.
       role: "group",
       // NO NAME BY DEFAULT, and the default used to be "Protected text,
       // paragraph 2".
@@ -3617,6 +3753,13 @@ export function Shield(props: ShieldProps) {
         ) : null}
         {seedScript ? <script dangerouslySetInnerHTML={{ __html: seedScript }} /> : null}
         {emitNoticeCss ? <style dangerouslySetInnerHTML={{ __html: noticeCss(attr) }} /> : null}
+        {/*
+          One rule, no English, once per page: with scripts off, take every dead
+          control off the page. See the note above NoScriptStyle. Emitted under
+          the same claim as the stylesheet beside it, so a nine-block article
+          ships one of these and not nine.
+        */}
+        {emitNoticeCss ? <NoScriptStyle attr={attr} /> : null}
         {emitNoticeJs ? (
           <script
             dangerouslySetInnerHTML={{
@@ -3731,7 +3874,7 @@ export function Shield(props: ShieldProps) {
       */}
       {emitStyle ? <style dangerouslySetInnerHTML={{ __html: fontFaceCss(v) }} /> : null}
       {/*
-        Font-load guard: replaces protected text with "Content unavailable" if
+        Font-load guard: blanks protected text behind a striped skeleton if
         any weight the page uses fails to load within 4s of the DOM being
         ready. One watcher per family, keyed on a window-level registry, so
         instances that share a family share its watcher.
@@ -3750,6 +3893,8 @@ export function Shield(props: ShieldProps) {
         document, including ones that stream in later.
       */}
       {emitAltCss ? <style dangerouslySetInnerHTML={{ __html: altCss(camo.attrName) }} /> : null}
+      {/* Same rule, same claim, for the clipped tier. See NoScriptStyle. */}
+      {emitAltCss ? <NoScriptStyle attr={camo.attrName} /> : null}
       {emitSolver ? (
         <script
           dangerouslySetInnerHTML={{

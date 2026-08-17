@@ -1,7 +1,8 @@
 {
+  "//": "On the wording of commit 50311c1, see the message of the commit that added this line.",
   "name": "@shieldfont/core",
-  "version": "0.3.4",
-  "description": "Core encoding/decoding logic for ShieldFont, the AI-scraping-resistant web font. Harms accessibility by design — an encoded block fails WCAG 2.2 SC 1.3.1, and this package ships none of the accessible-alternative machinery @shieldfont/react has. Don't encode content covered by the ADA, Section 508, the European Accessibility Act/EN 301 549 or the UK Equality Act 2010, or by any WCAG conformance claim.",
+  "version": "0.3.5",
+  "description": "Core encoding and decoding for ShieldFont, the AI-scraping-resistant web font. Zero runtime dependencies. A v0 alpha. This package ships none of the screen-reader machinery @shieldfont/react has, so that part is yours to build. Accessibility law differs by country and applies to you as the site operator, so check yours before you encode anything.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

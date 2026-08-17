@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * `a11y={{ mode: "text" }}` — the time-lock plain-text control.
  *
@@ -414,7 +415,7 @@ describe("the control is usable by a screen reader", () => {
     expect(props(shieldedBlock(t)).id).toBe(target);
   });
 
-  it("hides the whole control from sighted readers by default", () => {
+  it("hides the whole control from sighted readers under wrapper={false}", () => {
     // A sighted reader can already read the block — the font does that — so an
     // unexplained widget attached to text that looks fine is noise to them.
     const style = props(byAttr(Shield({ children: BODY, ...CLIPPED }), "data-typeface-group")!)

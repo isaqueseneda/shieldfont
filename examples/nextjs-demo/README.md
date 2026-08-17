@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Next.js demo
 
 The smallest possible Next.js App Router page using `@shieldfont/react`.
@@ -16,8 +17,9 @@ npm run dev
 and then copies the `.woff2` files into `public/fonts/` — the location
 `<Shield>` requests by default. Both steps are wired to `predev`/`prebuild`, so
 there is nothing to remember. If the fonts were missing the page would not fail
-quietly: ShieldFont's own guard replaces every protected block with "Content
-unavailable", which is the failure working as designed.
+quietly: ShieldFont's own guard blanks every protected block, dropping the words
+to transparent behind a striped grey skeleton and logging a console error, which
+is the failure working as designed.
 
 To verify the encoded text actually reaches the browser, scrape the page:
 
@@ -74,12 +76,12 @@ Every `<Shield>` here is bare — no `a11y` prop at all — because the accessib
 path is on by default and the demo should show what the docs describe. (It used
 to pass `a11y={{ mode: "text", seconds: 5 }}`, left over from when the path was
 opt-in, which quietly demonstrated a 5-second puzzle against a real default of
-14.) The encoded block is `aria-hidden`, so without an alternative a
-screen-reader user gets nothing at all — a WCAG 2.2 SC 1.3.1 failure. The
+14.) The encoded block is `aria-hidden`, so the alternative beside it is what a
+screen-reader user reads, and an audit will flag every block you wrap. The
 default mode seals the real words into the page and lets the reader's own
 browser grind out the key; there is no URL for a scraper to follow. Read
 [`docs/plain-text-mode.md`](../../docs/plain-text-mode.md) for the real limits,
-including which screen readers are actually verified.
+including which screen readers are actually tested.
 
 ## What stays plain
 
@@ -88,8 +90,24 @@ meta `<p>` underneath stay in your normal page font.
 
 The `<h2>` uses **`<NonShield>`**: real, indexable, readable words rendered in
 the same Optik face as the shielded paragraph. Do not reach for
-`font-family: Optik` to get that effect — the shipped `optik-*.woff2` are
-*shielded* builds whose substitutions ride the `ccmp` feature, and the
-dictionary is an involution, so plain English through one renders the **decoy**
-with nothing anywhere reporting a problem. `<NonShield>` sets
-`font-feature-settings: "ccmp" 0` to switch that off.
+`font-family: Optik` to get that effect — the shielded `optik-a/b/c/m` builds
+carry their substitutions in the `ccmp` feature, and the dictionary is an
+involution, so plain English through one renders the **decoy** with nothing
+anywhere reporting a problem.
+
+`<NonShield>` does not switch that feature off. It loads a **different file**
+under a **different family name**: `optik-n.woff2`, the neutral cut — the same
+Optik outlines and metrics, built from the same statics, with no substitution
+lookups in it at all — declared as `"Optik Text"`. Nothing to switch off means
+nothing an engine can decline to switch off, and it is ~35 KB against the
+shielded face's ~840 KB, because it carries the 526 real glyphs and none of the
+word composites.
+
+That used to be `font-feature-settings: "ccmp" 0`, and it was wrong for a year:
+**WebKit ignores it.** Safari applies `ccmp` unconditionally and no CSS reaches
+it — `"ccmp" off`, `-webkit-font-feature-settings`,
+`font-variant-ligatures: none` and `font-variant: none` were all tested and
+still painted the decoy.
+Every heading in a `<NonShield>` looked perfect to an author on Chrome and read
+as scrambled words to every Safari reader. If you find that CSS in an older
+example, it is out of date.

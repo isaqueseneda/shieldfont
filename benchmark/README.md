@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Benchmark (public, minimal core)
 
 ShieldFont swaps ~1 in 4 words on a page (measured: **24.4%** of all tokens
@@ -267,7 +268,9 @@ Bidirectional is the right test because content-word swaps do outsized damage:
 > `PROVENANCE.md`.
 
 **Reproduce.** `benchmark/data/v8/scripts/eval_phase1_semdiv.py` (needs the corpus
-splits + `pairs_v7_alpha_v18_*.json`), or run `benchmark/data/verify.py` against
+splits + `pairs_v7_alpha_v18_*.json`, *dev repo* — only α's source pairs ship
+here, as `benchmark/data/v7/pairs_v7_alpha_v15_0_1_0_0_0_0.json`), or run
+`benchmark/data/verify.py` against
 the committed `semdiv_extended.json` to recompute the per-corpus and median
 figures directly without re-running the model. Expected: NLI bidir-fail
 31–56% depending on corpus, synonym-swap control < 5%.
@@ -490,8 +493,11 @@ python3 scripts/build_alpha_mapping.py \
 python3 scripts/generate_font.py --base-path /path/to/base.ttf \
     --name "ShieldFont Mine" --prefix shieldfont-mine \
     --mapping-path scripts/myvariant_for_font.json
+# --mapping-id must match the id the build derived (the --prefix minus
+# "shieldfont-", since this mapping has no _meta.mappingId). It seeds the
+# glyph-name salt; audit_font.py defaults to "m15en" and would fail a good build.
 python3 scripts/audit_font.py --font public/fonts/shieldfont-mine.ttf \
-    --mapping scripts/myvariant_for_font.json
+    --mapping scripts/myvariant_for_font.json --mapping-id mine
 
 # Or mint your OWN private mapping at your own seed (re-pairs the v18 pool):
 python3 scripts/reseed_mapping.py --seed 42 --out mine.json
@@ -552,7 +558,8 @@ instrumented gates (per-corpus KenLM, Pythia-160M, Wiki-KenLM) and emitting a
 Wilson interval per gate is still open, tracked on the
 [roadmap](../ROADMAP.md).
 
-**2. The evaluation sample is not deterministic.** `phase2_common.py:68` seeds
+**2. The evaluation sample is not deterministic.**
+`benchmarks/v8/scripts/phase2_common.py (dev repo):68` seeds
 with `random.Random(SEED + hash(corpus) % 1000)`, and Python randomises string
 hashing per process, so a re-run draws a different sample of chunks. The exact
 denominators (134 here, 93 in the v7 harness, 4,000 for the joint-gate count)

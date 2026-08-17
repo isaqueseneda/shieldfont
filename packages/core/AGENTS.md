@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # AGENTS.md: how AI coding agents should use ShieldFont
 
 > This file ships inside every `@shieldfont/*` npm package. If you are an AI
@@ -10,9 +11,10 @@ ShieldFont makes written content **costly to scrape** for AI training. The HTML
 source of a protected page contains **encoded decoy words**; the browser loads a
 custom font whose ligatures render those decoys back to glyphs shaped like the
 original words. Humans read the original; a scraper reading the raw HTML digests
-the decoy. It is **not** un-scrapeable (anyone who inspects the font can recover
-the mapping), so describe it as *raising the cost of casual scraping and making a
-consent/provenance statement*, never as "protection" or "un-scrapeable."
+the decoy. It *raises the cost* of casual scraping and makes a
+consent/provenance statement. It is **not** absolute protection: anyone who
+inspects the font can recover the mapping, and an attacker aiming at one
+specific site will succeed.
 
 ## Two tools, two names: do not confuse them
 
@@ -30,15 +32,17 @@ private-mapping side, `docs/custom-mappings.md`.
 **Your original text must never ship to the browser in readable form.**
 
 `<Shield>` encodes in Node: at build time, or during server render. The browser
-downloads the encoded version and nothing readable besides. Say it that way, not
-"server side" — a static export has no server and is fully protected, while a
-*server* component can still leak (see below).
+downloads the encoded version and nothing readable besides. That is narrower
+than "server side": a static export has no server and is fully protected, while
+a *server* component can still leak (see below).
 
 One thing that is **not** an exception, and that you must not "fix": with
 `screenReader` on (the default) the block's real words *do* ship inside the
 page, **encrypted** behind a time-lock puzzle the reader's browser has to grind
-out. That is the accessible path, it is deliberate, and it is not plaintext. Do
-not remove it to satisfy the rule above, and do not describe it as a leak.
+out. That is the accessible path, and it is deliberate: do not remove it to
+satisfy the rule above. It is not a leak, because the words ship sealed rather
+than in plain form, and opening them costs the reader's own browser real
+compute.
 
 Two ways people break this. Both fail **silently in production**:
 
@@ -57,8 +61,11 @@ Two ways people break this. Both fail **silently in production**:
 - ❌ NEVER write a browser-runtime encoder. Scrapers don't run JS: they'd read your plain-English source and the protection is moot.
 - ❌ NEVER write an HTTP/edge-middleware encoder. Stay out of that space.
 
-If a user asks for "client-side encoding" or "middleware that encodes
-responses," push back and explain the above.
+Those last two are ruled out for different reasons. Client-side encoding does
+not work at all: the plaintext reaches the browser before any script runs, and a
+scraper reads that source without executing JavaScript. Edge middleware does
+work, but it adds runtime cost on every request, and it is out of scope for this
+project. Either way, encode at build time or during the server render instead.
 
 ## How to use it
 
@@ -104,10 +111,10 @@ to follow the "don't shield any heading" rule below. Arbitrary JSX is allowed
 > so an author stylesheet that disables `ccmp` page-wide cannot quietly turn the
 > protection off.
 
-Its limits, which you must state rather than imply away: `variant` selects only
-which font file is fetched — is now DEPRECATED AND IGNORED, since there is one
-neutral cut and it never auto-rotated anyway; and it emits no font-load guard, so a
-missing font leaves the text in a fallback face rather than skeletonising it.
+Its limits: `variant` selects only which font file is fetched — is now
+DEPRECATED AND IGNORED, since there is one neutral cut and it never auto-rotated
+anyway; and it emits no font-load guard, so a missing font leaves the text in a
+fallback face rather than skeletonising it.
 Outside React there is no `<NonShield>`, but the same file ships: set
 `font-family: "Optik Text"` (the `.tk9-t` class in `shieldfont.css`) on
 unencoded text. Never `font-family: Optik` with a feature setting — no CSS
@@ -116,8 +123,8 @@ disables `ccmp` in Safari.
 ## A bare `<Shield>` draws furniture on screen. Do not "clean it up."
 
 Three independent props, all on by default. There is no `tier`, `level` or
-`mode` prop bundling them, and no name for any combination — describe a
-configuration by the props it sets.
+`mode` prop bundling them, and no name for any combination: a configuration is
+the props it sets.
 
 | Prop | Default | What it does |
 |---|---|---|
@@ -131,10 +138,10 @@ the box with `wrapper={{ className }}` — the component-level `className` lands
 on the block and on the revealed words, not on the furniture.
 
 If a user asks why their page suddenly has a bordered box saying "protected from
-AI bots", the answer is `wrapper={false}`, and tell them what it costs: the
-control is still there, still focusable, but clipped off-screen, so a sighted
-keyboard user Tabs into something they cannot see (WCAG 2.2 SC 2.4.7), and a
-reader whose browser forced its own font gets no signal at all.
+AI bots", the answer is `wrapper={false}`, and it costs them this: the control
+is still there, still focusable, but clipped off-screen, so a sighted keyboard
+user Tabs into something they cannot see, and a reader whose browser forced its
+own font gets no signal at all.
 
 **`explain` was the 0.3.0/0.3.1 spelling of `wrapper` and now throws** — by
 design, with a message naming `wrapper`. There is no silent alias. The value is
@@ -162,11 +169,14 @@ Pass one by name, or pass a number and it snaps to the nearest cut, so
 ```
 
 `@shieldfont/font`, the CSS and CDN tier, ships Regular only. Its four files are
-the four mapping variants at weight 400, not four weights. If a user on that tier
-asks for bold, tell them it requires the React package rather than reaching for
-CSS `font-weight`, because a browser would draw a faux bold that distorts the
-ligatures and can expose the decoy text underneath. That is why the shipped CSS
-sets `font-synthesis: none`.
+the four mapping variants at weight 400, not four weights. Bold on that tier
+requires the React package rather than CSS `font-weight`: a browser would draw a
+faux bold that distorts the ligatures and can expose the decoy text underneath.
+Every element `@shieldfont/react` renders sets `font-synthesis: none` for
+exactly that reason. The shipped `shieldfont.css` does NOT: its `.tk9`
+classes set `font-family` and nothing else, so they stay renameable for
+camouflage, and the CDN tier tells you to add `font-synthesis: none` to your
+own rule if you want the browser held to Regular.
 
 Weight changes appearance only. The word substitutions and digit rules of a given
 variant are identical at every weight, so switching weight never changes what a
@@ -188,23 +198,26 @@ importantly, **anything you want to rank in search**. Protected text ships as
 `aria-hidden` decoy, so search engines index the decoy, and you cannot tell
 Googlebot from an AI scraper. Never wrap landing-page copy, meta
 descriptions, or any heading — not just SEO titles: once the body is a decoy,
-your headings are the only accurate text left on the page. Copy-paste yields the decoy, and screen
-readers do not read protected regions in normal linear or heading navigation
-(exploration by mouse or touch can still surface a decoy word), so also skip
-anything meant to be read aloud or pasted into other tools.
+your headings are the only accurate text left on the page. Copy-paste yields the
+decoy, and a protected block is not read out in normal linear or heading
+navigation, so also skip anything meant to be read aloud or pasted into other
+tools. Reading down the page, a screen reader is never handed the scrambled
+version, and our NVDA test asserts that. Screen review and touch exploration
+work differently and we have no automated coverage of them;
+[#2](https://github.com/isaqueseneda/shieldfont/issues/2) reported a decoy could
+be reached that way and we have not reproduced it. If you can test it properly:
+[#9](https://github.com/isaqueseneda/shieldfont/issues/9).
 
 Skipping a block does not mean leaving it in a different typeface. On the React
 tier, wrap it in `<NonShield>` (above) and it stays real, indexable and readable
 while rendering in the shipped face.
 
-**Never describe ShieldFont as accessible or compliant.** A protected block fails
-WCAG 2.2 SC 1.3.1 with every accessibility feature on, because the real words are
-not programmatically available until the reader spends a few seconds unlocking
-them with JavaScript. If a site is covered by the ADA (including the Title II web
-rule), Section 508, the European Accessibility Act / EN 301 549 or the UK
-Equality Act 2010, or claims WCAG conformance anywhere, ShieldFont does not go on
-that content. The full statement is at the top of
-[README.md](https://github.com/isaqueseneda/shieldfont#-read-this-first-shieldfont-breaks-accessibility); the
+**Never describe ShieldFont as accessible or compliant.** Meeting those requirements more fully is on our roadmap. If
+a site is covered by the ADA (including the Title II web rule), Section 508, the
+European Accessibility Act / EN 301 549 or the UK Equality Act 2010, or claims
+WCAG conformance anywhere, ShieldFont does not go on that content. The full
+statement is at the top of
+[README.md](https://github.com/isaqueseneda/shieldfont#accessibility); the
 list of what wrapping a block breaks for a human reader is
 [here](https://github.com/isaqueseneda/shieldfont/blob/main/docs/integration.md#what-protecting-a-block-breaks).
 
@@ -218,7 +231,7 @@ pin the version: never `@latest` (a silent mapping update would break existing
 encoded content):
 
 ```html
-<!-- GOOD --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">
+<!-- GOOD --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css">
 <!-- BAD  --> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@latest/shieldfont.css">
 ```
 

@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * The `a11y` prop.
  *
@@ -153,14 +154,226 @@ describe("renders no link, ever", () => {
   it("rejects the retired audio mode instead of quietly rendering a player", () => {
     // `{ mode: "audio", src }` was removed in 0.3.2 (GitHub issue #2): it asked
     // the author to synthesise and host a recording, which almost nobody did,
-    // and audio with no text alternative fails WCAG 2.2 SC 1.2.1 even when they
-    // did. TypeScript rejects the object now; this asserts the runtime does not
-    // resurrect it for a plain-JS caller who has not upgraded — no <audio>
-    // element, and the URL they passed never reaches the markup.
+    // and a recording with no text beside it leaves a deaf reader with nothing
+    // even when they did. TypeScript rejects the object now; this asserts the
+    // runtime does not resurrect it for a plain-JS caller who has not upgraded
+    // — no <audio> element, and the URL they passed never reaches the markup.
     const retired = { mode: "audio", src: "/audio/post-1.mp3" } as unknown as ShieldA11y;
     const tree = Shield({ children: BODY, wrapper: false, a11y: retired });
     expect(findTag(tree, "audio")).toBeUndefined();
     expect(JSON.stringify(tree)).not.toContain("/audio/post-1.mp3");
+  });
+});
+
+describe("the <noscript> fallback", () => {
+  // With scripts off the unlock cannot run — it needs JavaScript, BigInt and
+  // crypto.subtle — so the notice sentence ("please uncover the text before
+  // reading") points at a control that does nothing. On the drawn tier that
+  // control is fully rendered, visible and focusable; on the clipped tier it is
+  // `hidden` and never un-hidden. Two <noscript> elements answer that: a
+  // page-level one carrying a stylesheet that removes every dead control, and a
+  // per-block one carrying the sentence that retracts the instruction.
+  //
+  // The words in this fixture are the ones the leak assertions below look for,
+  // and they are deliberately distinctive: short fragments coincide by chance.
+  const SECRET = "Zarquon threadbare pomegranate ossuary.";
+  const SECRET_WORDS = ["zarquon", "threadbare", "pomegranate", "ossuary"];
+
+  /** Its payload — always inner HTML, never children. See below. */
+  const inner = (el: ReactElement) =>
+    (props(el).dangerouslySetInnerHTML as { __html: string } | undefined)?.__html ?? "";
+  /**
+   * PREDICATES, NOT IDENTITIES, and that is not a style preference.
+   *
+   * `walkDeep` CALLS every function component it meets, so two walks of one
+   * tree return two different objects for anything rendered inside one — and
+   * both <noscript> elements are. `toContain` across two walks therefore always
+   * fails, and `indexOf` across two walks silently returns -1, which passes a
+   * `toBeLessThan` for the wrong reason. Every assertion below either works
+   * within a single walk or matches on a predicate.
+   */
+  const isNoscript = (el: ReactElement) => el.type === "noscript";
+  const isSentence = (el: ReactElement) => isNoscript(el) && !inner(el).startsWith("<style");
+  /** Every <noscript> in the tree, in DOM order. */
+  const noscripts = (tree: unknown) => findAllTags(tree as never, "noscript");
+  /** The prose ones, i.e. everything that is not the page-level stylesheet. */
+  const sentences = (tree: unknown) => noscripts(tree).filter(isSentence);
+
+  /** Both tiers, spelled once. Every assertion below runs against both. */
+  const TIERS = {
+    drawn: (children: string) =>
+      Shield({ children, as: "p", a11y: { mode: "text", seconds: 5 } } as never),
+    clipped: (children: string) =>
+      Shield({ children, as: "p", wrapper: false, a11y: { mode: "text", seconds: 5 } } as never),
+    "clipped inline": (children: string) =>
+      Shield({ children, as: "span", wrapper: false, a11y: { mode: "text", seconds: 5 } } as never),
+  } as const;
+
+  for (const [tier, render] of Object.entries(TIERS)) {
+    it(`${tier}: ships one, outside the aria-hidden subtree and before it`, () => {
+      const tree = render(SECRET);
+      expect(sentences(tree)).toHaveLength(1);
+
+      const block = shieldedBlock(tree);
+      // OUTSIDE: there is no <noscript> anywhere inside the silence. Stronger
+      // than "this particular one is not in there", and immune to the identity
+      // problem described above.
+      expect(walkDeep(block).some(isNoscript)).toBe(false);
+      // BEFORE: reading down the page, by eye or by ear, the retraction is met
+      // ahead of the block it is about — same guarantee the control itself has.
+      // ONE walk, so both indices are into the same array.
+      const order = walkDeep(tree);
+      const noteAt = order.findIndex(isSentence);
+      const blockAt = order.indexOf(block);
+      expect(noteAt).toBeGreaterThanOrEqual(0);
+      expect(blockAt).toBeGreaterThanOrEqual(0);
+      expect(noteAt).toBeLessThan(blockAt);
+      // And it survives the aria-hidden prune, so it is genuinely announced
+      // rather than merely rendered.
+      expect(exposed(tree).filter(isSentence)).toHaveLength(1);
+    });
+
+    it(`${tier}: leaks none of the protected words`, () => {
+      // The same shape as the no-leak assertion in core's puzzle.test.ts. The
+      // sentence is a module constant and must never be derived from the
+      // block — not from `children`, not from the mapping, not from anything
+      // else that differs between two blocks on one page.
+      const html = sentences(render(SECRET)).map(inner).join(" ").toLowerCase();
+      expect(html).not.toContain(SECRET.toLowerCase());
+      for (const word of SECRET_WORDS) expect(html).not.toContain(word);
+    });
+
+    it(`${tier}: is byte-identical whatever the block contains`, () => {
+      // The strongest form of the same property: change everything about the
+      // block and the string does not move by one character.
+      const a = sentences(render(SECRET)).map(inner);
+      const b = sentences(render("Something else entirely, of a different length.")).map(inner);
+      expect(a).toEqual(b);
+    });
+
+    it(`${tier}: carries no URL of any kind`, () => {
+      // A link to a plain-text copy is what 0.2.0 removed, and inside
+      // <noscript> it would sit in the page source unconditionally — read by
+      // every crawler, whether or not it runs scripts. Worse than the thing
+      // that was deleted, not better.
+      const html = noscripts(render(SECRET)).map(inner).join(" ");
+      expect(html).not.toMatch(/<a[\s>]/i);
+      expect(html).not.toMatch(/href/i);
+      expect(html).not.toMatch(/https?:|\/\//);
+    });
+
+    it(`${tier}: uses inner HTML, never children`, () => {
+      // NOT STYLISTIC. React's server renderer emits <noscript> children as
+      // elements; the client parser, with scripting enabled, turns the contents
+      // of a <noscript> into a single raw TEXT node. Those trees do not match,
+      // so children written as JSX are a hydration mismatch on every block. An
+      // element with dangerouslySetInnerHTML has no child fibers, so React
+      // skips the subtree and the question never arises.
+      for (const el of noscripts(render(SECRET))) {
+        expect(props(el).dangerouslySetInnerHTML).toBeDefined();
+        expect(props(el).children).toBeUndefined();
+      }
+    });
+
+    it(`${tier}: ships no 'hidden' for a script to clear`, () => {
+      // The trap this file has been bitten by once already: the clipped half of
+      // the notice sentence used to ship `hidden` so the emitted script could
+      // un-hide it, the script runs before hydration, and React found an
+      // attribute in its server HTML that was gone from the DOM. Nothing here
+      // is mutated before hydration, and this is what keeps it that way.
+      for (const el of noscripts(render(SECRET))) {
+        expect(props(el).hidden).toBeUndefined();
+      }
+    });
+  }
+
+  it("removes every dead control with one rule and no English", () => {
+    // Both tiers park their buttons inside `[attr-acts]`, so one rule reaches
+    // both — and a stylesheet says it in no language, which is the only way to
+    // say it to every reader at once.
+    for (const render of Object.values(TIERS)) {
+      const style = noscripts(render(BODY)).map(inner).filter((h) => h.startsWith("<style"));
+      expect(style).toHaveLength(1);
+      expect(style[0]).toBe(`<style>[${A}-acts]{display:none !important}</style>`);
+    }
+  });
+
+  it("emits the stylesheet ONCE per page, not once per block", () => {
+    const tree = withShieldRenderPass(() => [
+      Shield({ children: BODY, as: "p", a11y: { mode: "text", seconds: 5 } } as never),
+      Shield({ children: "A second protected paragraph.", as: "p", a11y: { mode: "text", seconds: 5 } } as never),
+      Shield({ children: "A third protected paragraph.", as: "p", a11y: { mode: "text", seconds: 5 } } as never),
+    ]);
+    const all = noscripts(tree).map(inner);
+    expect(all.filter((h) => h.startsWith("<style"))).toHaveLength(1);
+    // ...and the sentence stays per block, because a reader may meet block
+    // three first and the fact has not been stated anywhere they have been.
+    expect(all.filter((h) => !h.startsWith("<style"))).toHaveLength(3);
+  });
+
+  it("retracts the sentence it follows, immediately and in order", () => {
+    // The pair has to be coherent read aloud: instruction, then retraction,
+    // with nothing in between. Asserted as adjacency in the exposed tree rather
+    // than as prose, because prose is what the defaults are for.
+    const seen = exposed(TIERS.drawn(BODY));
+    const sayFullAt = seen.findIndex((el) => `${A}-say-full` in props(el));
+    const noteAt = seen.findIndex(isSentence);
+    expect(sayFullAt).toBeGreaterThanOrEqual(0);
+    expect(noteAt).toBeGreaterThan(sayFullAt);
+    // Nothing between them: the pair has to read as one thought.
+    expect(seen.slice(sayFullAt + 1, noteAt).filter((el) => el.type !== "span")).toHaveLength(0);
+  });
+
+  it("says the impossibility before the remedy, and names no mechanism", () => {
+    // A listener who stops after one clause must not be left with false hope,
+    // and the reader wants to know why the words are not there — not what the
+    // machinery is called. Same reasoning the broken-font sentence carries.
+    const html = sentences(TIERS.drawn(BODY)).map(inner).join(" ");
+    expect(html.indexOf("cannot be shown")).toBeLessThan(html.indexOf("Turn JavaScript on"));
+    for (const jargon of ["puzzle", "BigInt", "crypto.subtle", "encoded", "cipher"]) {
+      expect(html).not.toContain(jargon);
+    }
+  });
+
+  it("is a lone spoken copy even when the strip is repeated", () => {
+    // `position: "both"` draws a second strip, whose own sentence is already
+    // aria-hidden because the lead strip owns the spoken copy. An unmuted
+    // retraction down there would be read to a listener twice, which is the
+    // duplicate prose this component spent a release removing.
+    const tree = noticed({ a11y: { mode: "text", seconds: 5 } });
+    expect(sentences(tree)).toHaveLength(2);
+    expect(exposed(tree).filter(isSentence)).toHaveLength(1);
+  });
+
+  it("can be switched off, on either tier", () => {
+    // `""` is an author removing it, not an empty string being replaced by the
+    // default. The stylesheet is a separate decision and stays.
+    const drawn = Shield({
+      children: BODY,
+      as: "p",
+      wrapper: { noScript: "" },
+      a11y: { mode: "text", seconds: 5 },
+    } as never);
+    const clipped = Shield({
+      children: BODY,
+      as: "p",
+      wrapper: false,
+      a11y: { mode: "text", seconds: 5, noScript: "" },
+    } as never);
+    for (const tree of [drawn, clipped]) {
+      expect(sentences(tree)).toHaveLength(0);
+      expect(noscripts(tree)).toHaveLength(1);
+    }
+  });
+
+  it("escapes author prose instead of splicing markup into the page", () => {
+    const tree = Shield({
+      children: BODY,
+      as: "p",
+      wrapper: { noScript: "Turn <script> & JS on" },
+      a11y: { mode: "text", seconds: 5 },
+    } as never);
+    expect(inner(sentences(tree)[0])).toBe("Turn &lt;script&gt; &amp; JS on");
   });
 });
 
@@ -198,10 +411,11 @@ describe("visualHidden", () => {
   });
 
   it("clips by default, and `false` puts the control back on screen", () => {
-    // The default is the interesting half: a sighted reader can already read
-    // the block through the font, so the control is screen-reader-only unless
-    // asked for. `false` must leave NO style behind at all — an empty style
-    // object here would be a clip that stopped clipping without anyone noticing.
+    // The default is the interesting half: with the drawn wrapper off, a
+    // sighted reader can already read the block through the font, so this
+    // control stays clipped unless asked for. `false` must leave NO style
+    // behind at all — an empty style object here would be a clip that stopped
+    // clipping without anyone noticing.
     const hidden = Shield({ children: BODY, wrapper: false, a11y: { mode: "text" } });
     const alt = (t: unknown) =>
       walkAll(t).find((el) => String(props(el).className ?? "").endsWith("-alt"));
@@ -264,7 +478,7 @@ describe("settings the wrapper cannot honour fail loudly", () => {
   // meant nothing SILENTLY, which is the part that mattered: a page that set
   // them and changed nothing else got a different rendering on upgrade with no
   // error, no warning and no way to find out except by noticing.
-  for (const key of ["reveal", "visualHidden", "label", "note"] as const) {
+  for (const key of ["reveal", "visualHidden", "label", "note", "noScript"] as const) {
     it(`throws for a11y.${key} on the drawn tier`, () => {
       const value = key === "visualHidden" ? false : key === "reveal" ? "visible" : "x";
       expect(() =>
@@ -464,14 +678,14 @@ describe("the drawn notice — what a listener is handed", () => {
     for (const n of shows) expect(n).toContain("Uncover the original text");
   });
 
-  it("keeps the visible label at the FRONT of the accessible name (SC 2.5.3)", () => {
-    // Label in Name. A speech-input user says "click Original text"; if the
-    // accessible name did not contain the visible words, nothing would happen.
+  it("keeps the visible label at the FRONT of the accessible name", () => {
+    // A speech-input user says "click Original text"; if the accessible name
+    // did not contain the visible words, nothing would happen.
     const t = noticed({ wrapper: { labels: { show: "Ver o texto" } } });
     for (const b of byAttrAll(t, `${A}-act`)) {
       const label = props(b)["aria-label"] as string;
       const span = descendants(b).find((e) => e.type === "span");
-      // SC 2.5.3 governs controls that HAVE a visible label. Copy is icon-only
+      // That only governs controls that HAVE a visible label. Copy is icon-only
       // now — there is no visible text for a speech-input user to say, so the
       // rule has nothing to bite on. What it must still have is a name at all,
       // which is the icon-only failure mode worth guarding instead.

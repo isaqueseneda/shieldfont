@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Encoder structure (maintainer note): single source of truth
 
 If you are looking for "the encoder," it is `src/encode.ts`. Everything else is
@@ -13,8 +14,8 @@ for the live one.
 | `MANIFEST.json` | variant → its built font + provenance | ✅ (when a font is built) |
 | `dist/**` | compiled package | ❌ `npm run build` |
 | `../font/shieldfont-encoder.js` | CDN bundle (published as `@shieldfont/font`) | ❌ `scripts/build-encoder-cdn.sh` |
-| `../../site/public/shieldfont-encoder.js` | site copy | ❌ generated: do not hand-maintain |
-| `../../scripts/encode_site.py` | Python HTML-encoder mirror | ✅ but keep in parity with `encode.ts` |
+| `site/public/shieldfont-encoder.js` *(dev repo)* | site copy | ❌ generated: do not hand-maintain |
+| `scripts/encode_site.py` *(dev repo)* | Python HTML-encoder mirror | ✅ but keep in parity with `encode.ts` |
 
 **Why mappings are emitted, not written:** `generate_font.py` builds the font and
 runs `make_injective` (drops many-to-one collisions), then writes

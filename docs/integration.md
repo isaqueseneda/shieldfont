@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Integrating ShieldFont: the four tiers
 
 ShieldFont ships in four flavors depending on how you build pages. Pick the one that matches your stack:
@@ -24,7 +25,7 @@ All four tiers build on the same v18 dictionary family, and `alpha` is the defau
 
 Protected text ships as `aria-hidden` decoy words in the DOM. Read this before you decide *what* to wrap:
 
-- **Accessibility: read the warning first.** A protected block fails **WCAG 2.2 SC 1.3.1** with every accessibility feature turned on, because the real words are not programmatically available until a reader spends a few seconds unlocking them with JavaScript. If accessibility law applies to your site — ADA (including the Title II web rule for US state and local government), Section 508, the European Accessibility Act / EN 301 549, the UK Equality Act 2010 — or you claim WCAG conformance anywhere, don't wrap content covered by that claim. The full statement, and where ShieldFont *is* a reasonable choice, is at the top of the [README](../README.md#-read-this-first-shieldfont-breaks-accessibility).
+- **Accessibility: read the warning first.** A reader gets the real text from the button in the notice above the block, and that notice is on by default. It needs JavaScript, a current browser and an https origin. What stays out of the page source is the source text, which is the whole mechanism, so an audit will flag every block you wrap. If accessibility law applies to your site — ADA (including the Title II web rule for US state and local government), Section 508, the European Accessibility Act / EN 301 549, the UK Equality Act 2010 — or you claim WCAG conformance anywhere, don't wrap content covered by that claim. The full statement, and where ShieldFont *is* a reasonable choice, is at the top of the [README](../README.md#accessibility).
 - **SEO: the big one.** Search engines index the *decoy* text, not your real words. You **cannot** distinguish Googlebot from an AI scraper, the same bytes go to both, so **don't wrap content you want to rank** (landing pages, product copy, meta descriptions, and every heading). Wrap the durable prose you'd rather keep out of a training set: essays, manifestos, long-form.
 - **Everything a human reader loses** is listed in one place below: [what protecting a block breaks](#what-protecting-a-block-breaks).
 - **The default dictionaries are public.** `alpha`/`beta`/`gamma`/`m15en` (the `maxhide` dictionary) ship as plaintext JSON in `@shieldfont/core`, and `@shieldfont/font` publishes a browser encoder (`shieldfont-encoder.js`, 277 KB) with all 11,970 `alpha` pairs inlined. Anyone can fetch either from npm or the CDN. Defaults are a convenience, not a secret; if you want a dictionary nobody else has, see [custom mappings](./custom-mappings.md).
@@ -42,11 +43,12 @@ One list, because these used to be scattered across four documents and nobody fo
 | **Copy and paste** | A selection touching protected text puts decoy words on the clipboard. Silently: the paste looks like ordinary English, so a reader quoting your paragraph misquotes you and never finds out. | In `@shieldfont/react`, the copy handler can intercept it and put a short explanatory notice on the clipboard instead of silent decoys. Once a block is unlocked in that browser, copy yields the real words. Outside React, nothing. |
 | **Find-in-page (`Ctrl/⌘-F`)** | Nothing found. Find-in-page searches the DOM, so a reader searching for a phrase they can plainly see on screen gets no result. | Nothing. No fix exists; it is the same gap the whole design rests on. |
 | **Browser translation** | Chrome/Firefox/Safari translate the DOM, so a reader gets a fluent translation of the *decoy* in their own language, with nothing marking it as wrong. Worse than an untranslated page. | Unlocking a block on screen puts the real words in the DOM, so translation then works on them. |
-| **Reader Mode / simplified view** | Reader views extract the text and re-render it in their own typeface, so the font never applies and the decoy shows as-is. Same failure shape as forced fonts, minus the reader having chosen it. | Nothing today. |
+| **Reader Mode / simplified view** | Two different failures, split by engine. Firefox Reader View and Chrome's Reading Mode both drop `aria-hidden` subtrees, so a shielded block does not reach Reader at all: a partly-shielded article opens with holes where the protected paragraphs were, and the reader is looking at an essay missing its middle. Safari Reader ignores `aria-hidden` completely, so it extracts the *decoy* and re-renders it in Apple's own typeface — fluent, grammatical, **wrong** English with **no signal**, which is the forced-fonts failure below, on the default browser of every Apple device. Worth sitting with: the reading modes and the Readability-family scrapers in the [threat model](#threat-model-what-shieldfont-does-and-doesnt-protect-against) are now literally the same code, because Chromium vendors Mozilla's Readability. The thing that stops a scraper is the thing that takes the paragraph away from a human. | Nothing, and nothing is possible. No markup excludes a block from all three engines — the attribute two of them honour is the one the third ignores — and no specification offers an opt-out. |
 | **Forced fonts** | The reader has told the browser to use *their* font instead of yours — Firefox with **"Allow pages to choose their own fonts"** unchecked, a dyslexia-friendly font extension, some high-contrast and OS-level accessibility setups. The decoy renders in that font. They read fluent, grammatical, **wrong** English and get **no signal at all**. | The visible wrapper, and currently nothing else. See below. |
 | **Feeds and the page disagree** | `/feed.xml`, JSON-LD, OpenGraph and CMS APIs are generated from your source data, so they ship **plain English** while the page ships decoy. A subscriber and a visitor read two different texts, and a crawler that never knew your site was shielded gets the original. | [The plaintext side doors](#the-plaintext-side-doors-close-these-or-the-rest-is-theatre), below. Summaries only; never encode the feed. |
-| **Decoy reaching a screen reader** | Protected regions are `aria-hidden`, so they are **not** read in normal linear or heading navigation — a listener going down the page hears silence, not a fluent wrong paragraph. That is not the same as unreachable: NVDA's mouse-tracking and screen-review modes, and touch exploration on iOS and Android, read the DOM by position and **can** surface decoy words. Reported by a real reader in [#2](https://github.com/isaqueseneda/shieldfont/issues/2). | The accessible path beside the block: [`plain-text-mode.md`](./plain-text-mode.md). It does not stop the decoy being reachable by exploration. |
-| **JS off + font 404** | The fail-loud font guard is JavaScript. With scripts disabled *and* the font missing, nothing replaces the block with *"Content unavailable"* and a human reads the raw decoy. The accessible path needs JavaScript too, so it is gone in the same breath. | Nothing. Ship the fonts. |
+| **Decoy reaching a screen reader** | Protected regions are `aria-hidden`, so **reading down the page — normal linear or heading navigation — a screen reader is never handed the scrambled version**: a listener hears silence, not a fluent wrong paragraph. Our NVDA test asserts that. Screen review and touch exploration work differently and we have no automated coverage of them. [#2](https://github.com/isaqueseneda/shieldfont/issues/2) reported a decoy could be reached that way; we have not reproduced it in VoiceOver or iOS touch. If you can test it properly: [#9](https://github.com/isaqueseneda/shieldfont/issues/9). | The accessible path beside the block: [`plain-text-mode.md`](./plain-text-mode.md). Whether screen review or touch exploration can reach the decoy is untested either way, and [#9](https://github.com/isaqueseneda/shieldfont/issues/9) is the standing ask. |
+| **JS off** | The accessible path is JavaScript, so with scripts disabled the words cannot be uncovered at all — and the controls that offer to do it are still on the page. On the default drawn wrapper the Copy and Uncover buttons render normally, so a reader gets a real, visible, focusable button that does **nothing**: no navigation, no error, no state change, and a screen-reader user hears it announced and then gets silence. With `wrapper={false}` the button ships `hidden` and is never un-hidden, so the note points at a control that is not in the accessibility tree at all. Copy mediation is gone in the same breath, so copying a shielded paragraph silently yields decoy words. | A `<noscript>` in both tiers: a page-level stylesheet that takes the dead controls off the page, and one sentence after the note saying the words cannot be shown without JavaScript. Reword or silence it with `noScript`. Nothing for the copy case. |
+| **JS off + font 404** | The fail-loud font guard is JavaScript too. With scripts disabled *and* the font missing, nothing blanks the block behind its skeleton and a human reads the raw decoy. | Nothing. Ship the fonts. |
 
 #### Forced fonts: the one with no signal
 
@@ -215,6 +217,7 @@ Server-fetched data works the same way: encoding happens during render, so wrapp
 | `as` | `ElementType` | `"div"` | Which HTML element to render. |
 | `variant` | `"alpha" \| "beta" \| "gamma" \| "maxhide"` | auto-rotate | Mapping + font variant. Left unset, `<Shield>` **auto-rotates** `alpha`/`beta`/`gamma` by content hash (so one site uses all three). Pin one to fix it. `"maxhide"` is the coverage-max dictionary: it hides about twice as much of the page but quality filters reject it almost entirely, so read [what it costs you](./concealment.md#maxhide-and-what-it-costs-you) before choosing it. |
 | `weight` | `"regular"` \| `"medium"` \| `"demibold"` \| `"bold"` \| `"extrabold"` \| `"black"` \| `1..1000` | inherit | Font weight. Six real static cuts of Optik ship per variant (400 through 900, Playtype's own cut names lowercased). A numeric value snaps to the nearest real cut; nothing is synthesised. See [Weights: the six cuts (Tier A only)](#weights-the-six-cuts-tier-a-only) below. |
+| `italic` | `boolean` | inherit | Renders the italic cut. Every weight ships as a real drawn italic; nothing is synthesised. A whole block at a time is the only italic a `<Shield>` can have, because `children` must be a plain string. |
 | `lineHeight` | `number \| string` | inherit | Passthrough. |
 | `size` | `string` | inherit | font-size passthrough. |
 | `className` | `string` | n/a | Escape hatch, merges with internal scope. |
@@ -234,7 +237,9 @@ Weights and mapping variants are two independent axes. Every one of the four var
 | `extrabold` | 800 | Optik ExtraBold |
 | `black` | 900 | Optik Black |
 
-Each of those is a genuine Playtype static cut run through the same encoding pipeline, verified to reproduce all 526 master glyphs coordinate for coordinate. There is no variable font, nothing is interpolated, and no italics ship at any weight.
+Each of those is a genuine Playtype static cut run through the same encoding pipeline, verified to reproduce all 526 master glyphs coordinate for coordinate. There is no variable font and nothing is interpolated.
+
+**Every one of the six also ships as a real drawn italic**, so each variant carries twelve faces: six upright, six italic. Both styles are declared **under the same family name**, which is what makes the italic reachable by ordinary CSS and not only by a prop — the `italic` prop, an author stylesheet, an italic ancestor, or an `<em>` / `<i>` / `<cite>` inside a `<NonShield>` all resolve to it with nothing to opt into. Nothing is ever synthesised: `font-synthesis: none` is set on every element the package renders, because a faux oblique smears Playtype's outlines and distorts the word composites enough to expose that decoys are in play. Inside a `<Shield>`, `italic` sets a whole block and is the only italic available, because `children` must be a plain string; for a phrase, close the shield and open another, or use `<NonShield>`. Full detail: [Italics in the `@shieldfont/react` README](../packages/react/README.md#italics).
 
 **Encoding is identical at every weight.** For a given variant, the word substitution dictionary and the digit rules are byte-identical across all six cuts. Choosing a weight changes how the text looks and never what it encodes, so you can mix weights inside one page without thinking about it.
 
@@ -375,10 +380,12 @@ unrecognised prop.
 
 - **`variant` does not auto-rotate, and there is nothing for it to spread.**
   `<Shield>` rotates across `alpha`/`beta`/`gamma` because the mapping changes
-  what a scraper reads; here nothing is encoded, so rotation would only pull a
-  second ~825 KB file onto a page to render text identically. Pin `<Shield>` to
-  the same variant your `<NonShield>`s use and the whole page is one font
-  download.
+  what a scraper reads; here nothing is encoded and the file is always the
+  neutral cut. Pinning `<Shield>` to one variant does **not** get the page down
+  to a single font download: the neutral cut is a different file under a
+  different family, so any page mixing the two fetches two faces — one shielded
+  cut at ~840 KB and `optik-n` at ~35 KB. Pinning still saves the *second* and
+  *third* shielded cut that auto-rotation would pull in.
 - **It emits no font-load guard, and it is not covered by `<Shield>`'s.** It
   does not stamp the `data-typeface` attribute the guard's selectors are scoped
   to. That is deliberate: when a face fails to load, `<Shield>`'s guard blanks
@@ -400,8 +407,10 @@ unrecognised prop.
 
 The React component is **self-host only**: it never points at a public CDN it
 doesn't control. Reason: a typography-based defense must *fail loud*, never
-silent. If the font can't load, a bundled 4-second guard replaces protected text
-with "Content unavailable"; it must never fall back to showing the raw decoy. A
+silent. If the font can't load, a bundled 4-second guard blanks protected text —
+the words go transparent behind a striped grey skeleton, and it logs a console
+error naming the family and the host it tried. There is no substitute message,
+and it must never fall back to showing the raw decoy. A
 CDN you don't own can vanish and break that guarantee, so you serve the font
 yourself.
 
@@ -512,9 +521,10 @@ Then load the font once with ten lines of `@font-face` (self-host from
 `@shieldfont/font`, or the CDN bundle in Tier C below). Add `class="tk9"` to any
 element you want rendered through the protection font.
 
-> **One weight on this tier.** `@shieldfont/font` ships Regular (400) only, one
-> file per mapping variant. Protected text renders at Regular however you style
-> it, so keep bold and heavier type outside the shielded blocks. The six real
+> **One weight on this tier.** `@shieldfont/font` ships Regular (400) only —
+> an upright and an italic per mapping variant, and no other weight. Protected
+> text renders at Regular however you style it, so keep bold and heavier type
+> outside the shielded blocks; `font-style: italic` does work. The six real
 > cuts (Regular 400 through Black 900) exist in `@shieldfont/react` and nowhere
 > else: see [Weights: the six cuts](#weights-the-six-cuts-tier-a-only).
 
@@ -532,14 +542,16 @@ signal). A ~12-line build script replaces the old CLI entirely.
 
 ## Tier C: CSS @import + paste
 
-> ⚠️ **This is the least concealed tier, and it is meant for trying things out.** The `@shieldfont/font` URL sits in your stylesheet, so anyone reading your CSS knows the page is shielded and with which dictionary. Everyone on this tier shares the same `alpha` mapping, so one precomputed table decodes all of them at once. And there is no rotation, because there is no component to run it. It is a real, working install and the protection it applies is the same protection everywhere else, but if you can run a build step, move to [Tier A](#tier-a-jsx-with-shieldfontreact) or [Tier B](#tier-b-any-framework--build-step-shieldfontcore): both drop the package URL, and both let you mint a mapping nobody else holds. See [Concealment & camouflage](./concealment.md) for the full comparison.
+> ⚠️ **This is the least concealed tier, and an educational one: for learning
+> ShieldFont and for pages with no build step. [Tier A](#tier-a-jsx-with-shieldfontreact)
+> is the recommended route for a site you're shipping.** The `@shieldfont/font` URL sits in your stylesheet, so anyone reading your CSS knows the page is shielded and with which dictionary. Everyone on this tier shares the same `alpha` mapping, so one precomputed table decodes all of them at once. And there is no rotation, because there is no component to run it. It is a real, working install and the protection it applies is the same protection everywhere else, but if you can run a build step, move to [Tier A](#tier-a-jsx-with-shieldfontreact) or [Tier B](#tier-b-any-framework--build-step-shieldfontcore): both drop the package URL, and both let you mint a mapping nobody else holds. See [Concealment & camouflage](./concealment.md) for the full comparison.
 
 The lowest-friction path for blogs, hosted CMSes (WordPress, Ghost, Squarespace), and anyone who controls their site's CSS but doesn't have a build step. Two pastes: one is permanent site setup, one is per protected paragraph.
 
 ### Step 1: One-time install (paste into your site's CSS)
 
 ```css
-@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css');
+@import url('https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css');
 ```
 
 Where to put it depends on your platform:
@@ -547,15 +559,15 @@ Where to put it depends on your platform:
 - **WordPress**: Appearance → Customize → Additional CSS (Customizer plan and above), or your theme's `style.css`.
 - **Ghost**: Settings → Code injection → Site header (or the Custom CSS field if your theme exposes one).
 - **Squarespace**: Design → Custom CSS (this panel is available on every plan; the Code Injection panel is gated to Business+ but you don't need it for this).
-- **Plain HTML / static sites**: either drop the `@import` into your existing stylesheet, or use `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css">` in `<head>`. The `<link>` form is marginally faster (parses in parallel with HTML): prefer it if you have `<head>` access.
+- **Plain HTML / static sites**: either drop the `@import` into your existing stylesheet, or use `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css">` in `<head>`. The `<link>` form is marginally faster (parses in parallel with HTML): prefer it if you have `<head>` access.
 
 This stylesheet declares `@font-face` for `'Optik'` and ships a `.tk9` utility class.
 
-> **Regular only, and this is the tier where people expect otherwise.** The four
-> files behind that stylesheet, `optik-a.woff2`, `optik-b.woff2`,
+> **Regular only, and this is the tier where people expect otherwise.** The
+> shielded files behind that stylesheet, `optik-a.woff2`, `optik-b.woff2`,
 > `optik-c.woff2` and `optik-m.woff2`, are the four mapping variants at
 > **weight 400**. There is no Medium, DemiBold, Bold, ExtraBold or Black on this
-> tier, and no italic. Asking for `font-weight: bold` on a `.tk9` element does
+> tier. Asking for `font-weight: bold` on a `.tk9` element does
 > not fetch a heavier file, because there isn't one: the browser draws a
 > synthetic bold of the Regular cut, which distorts the composite glyphs. Add
 > `font-synthesis: none` to your own `.tk9` rule if you would rather it stayed
@@ -563,6 +575,15 @@ This stylesheet declares `@font-face` for `'Optik'` and ships a `.tk9` utility c
 > [Tier A](#tier-a-jsx-with-shieldfontreact) is for: it bundles
 > [six real cuts per variant](#weights-the-six-cuts-tier-a-only), Regular 400
 > through Black 900.
+>
+> **Italic does ship here, and it is the one style axis that does.** Each of
+> those four files has an `-italic` companion (`optik-a-italic.woff2` and so
+> on), at Regular, declared under the same family name as its upright — so
+> `<em>`, `<i>`, `<cite>` and a plain `font-style: italic` inside a `.tk9`
+> element resolve to a real drawn italic with nothing to opt into. The neutral
+> cut ships both styles too (`optik-n.woff2`, `optik-n-italic.woff2`). What you
+> cannot have on this tier is a *bold* italic, for the same reason you cannot
+> have a bold: the cut does not exist.
 
 > **Which dictionary version?** On the CDN tier the font family and filenames stay neutral, but the font stamps the **dictionary generation** it was built for into its own version field: the one deliberate tell of this tier. Encoded text only reads back correctly under a font whose version matches the dictionary that encoded it, so if you (or a collaborator) re-render a page later, read the font's version to pair it with the right dictionary. See [Checking your font version](./concealment.md#checking-your-font-version).
 
@@ -595,7 +616,7 @@ it in your browser, and use it exactly like the hosted one:
 <button onclick="go()">Encode</button>
 <textarea id="out" rows="8" cols="60"></textarea>
 <script type="module">
-  import { encode, alpha } from "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont-encoder.js";
+  import { encode, alpha } from "https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont-encoder.js";
   window.go = () => {
     document.getElementById("out").value =
       encode(document.getElementById("in").value, alpha);
@@ -666,7 +687,7 @@ For documents you'll edit later, also keep a plain-English source copy somewhere
 Every CDN URL we publish is **version-pinned and immutable**. No "latest" channels: silently upgrading the mapping would break existing encoded content.
 
 ```
-✅ https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.2/shieldfont.css
+✅ https://cdn.jsdelivr.net/npm/@shieldfont/font@0.3.5/shieldfont.css
 ❌ https://cdn.jsdelivr.net/npm/@shieldfont/font@latest/shieldfont.css
 ```
 

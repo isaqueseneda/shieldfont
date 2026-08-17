@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # `<Shield>` — every prop, in plain English
 
 Assumes you know nothing about the docs. Every behaviour below was **verified by
@@ -65,10 +66,15 @@ a quote.
 |---|---|---|
 | On screen | outline + strip + 2 buttons | **nothing** |
 | Buttons in markup | 2 | 1, clipped off-screen |
-| Elements per block | 31 | 16 |
+| Elements per block | 32 | 17 |
 
 With `wrapper={false}` the control still exists and still works — it is simply
 positioned off-screen where only assistive technology finds it.
+
+The element counts are the block's own markup, including the
+`<script type="application/json">` that carries its sealed words. The
+`@font-face` stylesheet and the font-load guard are page-level assets, emitted
+once per page rather than once per block, so they are not in the count.
 
 ### `copyPaste` — copy protection
 
@@ -87,13 +93,13 @@ notes, which they may not notice for a long time. That is why it defaults on.
 
 | Prop | Type | Default | What it does |
 |---|---|---|---|
-| `as` | string | `"p"` | Which HTML tag to render. Verified: `as="h2"` renders `<h2>`. **But don't shield headings** — see the note at the end. |
-| `weight` | number \| name | `400` | Font weight. Six real cuts ship; a number snaps to the nearest. Verified: `700`→700, `470`→**500**, `"demibold"`→600, `"bold"`→700. No fake bolds. |
+| `as` | string | `"div"` | Which HTML tag to render. Verified: unset renders `<div>`, `as="h2"` renders `<h2>`. **But don't shield headings** — see the note at the end. |
+| `weight` | number \| name | inherit | Font weight. Unset emits no `font-weight` at all, so the block inherits one. Six real cuts ship; a number snaps to the nearest. Verified: `700`→700, `470`→**500**, `"demibold"`→600, `"bold"`→700. No fake bolds. |
 | `lineHeight` | number | — | Line height. Verified: `2` → `line-height:2`. |
 | `size` | string | — | Font size. Verified: `"2rem"` → `font-size:2rem`. |
 | `className` | string | — | Your CSS class. **Lands on the text block and on the revealed text** — not on the wrapper. Verified: 2 elements. |
 | `style` | object | — | Inline styles on the text block. Verified. |
-| `variant` | `"alpha"` \| `"beta"` \| `"gamma"` \| `"maxhide"` | `"alpha"` | Which substitution dictionary. `maxhide` swaps the most words, including short ones like *at/by* and *is/was*. |
+| `variant` | `"alpha"` \| `"beta"` \| `"gamma"` \| `"maxhide"` | auto | Which substitution dictionary. Unset, each block hashes its own text and lands on one of `alpha`/`beta`/`gamma`, so a page uses all three; `maxhide` is opt-in only and never auto-selected. It swaps the most words, including short ones like *at/by* and *is/was*. |
 | `rotate` | object | — | Rotate variants automatically over time, so one site doesn't ship one fixed fingerprint. |
 
 ### Styling the wrapper itself
@@ -119,7 +125,7 @@ Each switch takes `true`/`false`, or an object to configure it:
   wrapper={{
     className: "my-wrapper",
     text: "Custom explanation sentence.",
-    position: "top",               // "top" | "bottom" | "both"
+    position: "top",               // "top" | "both" — the only two values
     labels: { show: "Reveal", copy: "Copy" },
   }}
   copyPaste={{ notice: "Custom clipboard message." }}
@@ -168,9 +174,10 @@ and you feed it a confident, wrong summary. Use the sibling component instead:
 get this by setting `font-family` yourself — the shipped font carries the
 substitutions inside it, so plain text set in it renders the **decoy**.
 
-**A protected block fails WCAG 2.2 SC 1.3.1.** Always. That is the mechanism, not
-a bug being worked around. These props make a protected page humane, not
-compliant.
+**An audit will flag every block you wrap.** What stays out of the page source is
+the source text — that is the mechanism, not a bug being worked around. Check
+what your own country's accessibility law asks of you before you shield content
+it covers. These props make a protected page humane, not compliant.
 
 ---
 

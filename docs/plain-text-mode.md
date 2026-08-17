@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # The plain-text mode
 
 `a11y={{ mode: "text" }}` gives a screen-reader user the real words of a
@@ -8,26 +9,27 @@ once, per block.
 ## Where this stands
 
 First of all this is a new challenging approach and it is in an early stage and
-we don't yet have all the answers, Sway.
+we don't yet have all the answers.
 
 Accessibility is a complicated and unsolved problem everywhere in the world, and
 this project can only 80/20 it. What follows is what we chose, what it costs,
 and where it is still wrong — not a claim to have solved anything.
 
-**A principle: for now, everyone sacrifices a little for the common good.** Some
-people will take a few extra seconds to copy and paste. Screen readers will have
-to wait for a puzzle to grind. That is a real cost and it is spread on purpose,
-because the alternative is a page that works perfectly for most people by
-failing completely for a few.
+**Nobody is shut out. Everyone pays a little instead of a few paying
+everything.** Some readers spend a few extra seconds on copy and paste. A
+reader using assistive software waits a few seconds for words everyone else
+already has. That second cost is the one that bothers us and the one we most
+want to fix. We built it this way because the alternative was a page that works
+perfectly for most people by failing completely for a few.
 
 **But some things would have been unacceptable.** A screen reader reading out
 gibberish. Someone using a custom face — dyslexia-friendly, high-contrast,
 larger — getting scrambled text and never being told that is what happened. Both
-of those are silent failures: the reader has no way to know the page is lying to
-them, so they blame themselves or the writer.
+of those fail quietly: the reader has no way to know something changed, so they
+assume they misread it or that the writer slipped.
 
-That is why the wrapper exists, and why it is the default and the recommended
-approach. It is the only arrangement where nobody is quietly misled.
+That is why the wrapper exists, and why it is the default. It is the arrangement
+where nobody is left guessing.
 
 **We do not want to be prescriptive about accessibility.** You know your
 audience and your application, and you may reach it in ways this library does
@@ -105,7 +107,7 @@ block is `aria-hidden` with **no alternative behind it** — the accessible path
 becomes entirely yours to build, and "I'll add it later" is a page that is
 inaccessible now. And `wrapper={false}` on its own leaves our control real and
 focusable but clipped off-screen, so a sighted keyboard user Tabs into
-something they cannot see: a WCAG 2.2 SC 2.4.7 failure. Pass
+something they cannot see and loses their focus indicator. Pass
 `visualHidden: false` to put a control back on screen, or turn `screenReader`
 off too and provide your own.
 
@@ -155,19 +157,16 @@ object — so the fix is the key and nothing else.
 | **Markup, one block** | 32 elements, ~11 kB | 17 elements, ~9 kB | 17 elements, ~9 kB | 1 element, 247 bytes |
 | **Matchable English** | The whole sentence, the button words, the clipboard notice. | The note and the button name (`"scrambled"`, `"Uncover the plain text"`), plus the clipboard notice. | The note and the button name. | **None.** Nothing a crawler can pattern-match on. |
 | **Copy & paste** | A selection touching protected text lands a short notice saying how to get the real words. | Same. | **Decoy words, silently.** The reader pastes fluent nonsense into their notes and finds out later, or never. | Decoy words, silently. |
-| **Known WCAG 2.2 failures** | **SC 1.3.1.** The words are not programmatically available until a reader completes a JavaScript unlock. | **SC 1.3.1**, plus **SC 2.4.7** — the control is clipped off-screen, so a sighted keyboard user Tabs into something they cannot see. | Same: **1.3.1 + 2.4.7**. | **SC 1.3.1, with no alternative at all.** Under the EU Accessibility Act or the ADA Title II web rule that is a procurement blocker, not an ethics question. |
+| **What it still costs a reader** | The real text comes from the Uncover button in the notice. That needs JavaScript, a current browser, an https origin and a few seconds of the reader's own CPU. The source text stays out of the page source, so an audit will flag the block. | Same, and the control is clipped off-screen: a sighted keyboard user Tabs into something they cannot see and loses their focus indicator. | Same. | **No alternative at all.** The block is `aria-hidden` with nothing beside it, so building that path is yours. Rules such as the EU Accessibility Act and the ADA Title II web rule set requirements a site has to meet on exactly that point. |
 
-> **This row used to say "Passes" for the first three columns, and that was
-> wrong.** It contradicted the [README warning](../README.md#-read-this-first-shieldfont-breaks-accessibility),
-> and it contradicted *this same file* four hundred lines further down. Nothing
-> in the last two days of work changed the SC 1.3.1 position and nothing can:
-> that position **is** the mechanism. What did change is that the machine-checkable
-> part is now actually checked — `node scripts/axe-audit.mjs` reports zero
-> violations across both the drawn wrapper and the off-screen control, before and
-> after the unlock. A clean axe run is not conformance: axe covers roughly a
-> third of WCAG and cannot judge whether the words a screen reader is handed are
-> the words on the screen, which is the whole question here. **No document in
-> this repository may use the word "pass" about a protected block.**
+> **The machine-checkable part is checked; the rest is not machine-checkable.**
+> `node scripts/axe-audit.mjs` reports zero violations across both the drawn
+> wrapper and the off-screen control, before and after the unlock. A clean axe
+> run is not conformance: axe covers roughly a third of WCAG and cannot judge
+> whether the words a screen reader is handed are the words on the screen, which
+> is the whole question here. What stays out of the page source is the source
+> text, and that is the mechanism rather than a defect waiting to be patched —
+> the [accessibility warning](../README.md#accessibility) has the full statement.
 
 ### Why all three default on
 
@@ -202,8 +201,8 @@ person something and costs a crawler nothing.
 **`screenReader={false}` is documented rather than hidden.** It is a real choice
 with a real reason — maximum concealment, no signature at all — and a library
 that hid its worst option would not be trustworthy about its best one. Know what
-you are choosing: it fails an accessibility requirement that is law in several
-places.
+you are choosing: the block ships `aria-hidden` with nothing beside it, and
+accessibility law reaches sites in several countries. Check yours.
 
 ### One thing no switch fixes
 
@@ -233,17 +232,17 @@ grammatical, *wrong* English, and nothing about it announces itself as broken �
 so `<Shield>` marks the block `aria-hidden="true"` and assistive technology
 skips it in linear and heading navigation.
 
-**Skipped is not the same as unreachable, and the docs used to claim it was.**
-`aria-hidden` governs the reading order; it does not erase the words from the
-page. NVDA's mouse-tracking and screen-review modes, and touch exploration on
-iOS and Android, walk the DOM by screen position, and a reader using any of them
-can land on a decoy word and hear it. So "nobody hears a decoy" was too strong:
-what is true is that nobody hears one while reading the page the ordinary way.
-A reader reported the exploration case in
-[#2](https://github.com/isaqueseneda/shieldfont/issues/2).
+**Reading down the page, a screen reader is never handed the scrambled
+version.** Our NVDA test asserts that. Screen review and touch exploration work
+differently and we have no automated coverage of them.
+[#2](https://github.com/isaqueseneda/shieldfont/issues/2) reported a decoy could
+be reached that way; we have not reproduced it in VoiceOver or iOS touch. If you
+can test it properly:
+[#9](https://github.com/isaqueseneda/shieldfont/issues/9).
 
-Skipping is not a fix either. What a sighted reader perceives is then not
-programmatically available at all, which fails WCAG 2.2 SC 1.3.1.
+Skipping is not a fix either. On its own it leaves a reader with nothing at all
+where a sighted reader has a paragraph, which is why something has to stand
+beside the block.
 
 **The obvious answer is a link to a plain-text copy, and it does not work.**
 That shipped in 0.2.0 as `{ mode: "text", href }` and was removed, because a URL
@@ -258,6 +257,12 @@ is denied them. The accessible path simply stops being the **cheapest** path.
 ---
 
 ## How it works
+
+It works like a CAPTCHA. Plenty of sites ask you to prove you are not a robot
+before they show you something, and this is the same idea with the work moved
+off the person and onto the machine. There is nothing to see, nothing to hear
+and nothing to solve. You press a button, your browser does a few seconds of
+arithmetic, and the text appears.
 
 At build time, each block gets its own **time-lock puzzle** (Rivest–Shamir–Wagner,
 1996):
@@ -480,13 +485,14 @@ for copy-paste, and that is why the wrapper exists and is now drawn by default.
 ### The cost of that: keyboard focus disappears
 
 **A sighted person navigating by keyboard, without a screen reader, will Tab
-into a control they cannot see, and their focus indicator will vanish.** That is
-a WCAG 2.2 SC 2.4.7 (Focus Visible) failure and it is deliberate: invisibility
-was the requirement.
+into a control they cannot see, and their focus indicator will vanish.** That
+follows directly from clipping the control off-screen, which is what
+`wrapper={false}` asks for: invisibility was the requirement.
 
 The standard remedy is the skip-link pattern — clipped until focused, visible
-while focused — and it is **not implemented**. If you need 2.4.7, pass
-`visualHidden: false` and the control is on screen for everyone.
+while focused — and it is **not implemented**. If you need a focus indicator on
+that control, pass `visualHidden: false`, or leave `wrapper` at its default, and
+the control is on screen for everyone.
 
 ### Where the words go
 
@@ -622,6 +628,7 @@ Details that matter, and why:
     reveal: "hidden",     // "hidden" (default) | "visible"
     label: undefined,     // overrides the button's accessible name
     note: undefined,      // overrides the explanatory sentence
+    noScript: undefined,  // overrides the <noscript> sentence; "" emits none
     visualHidden: true,   // default true
   }}
 >
@@ -635,14 +642,17 @@ Details that matter, and why:
 | `reveal` | `"hidden"` | `"hidden"` puts the words in the page for assistive technology only; `"visible"` replaces the encoded block on screen. |
 | `label` | *"Uncover the original text (up to N seconds)"* | The button's accessible name — the same on every block, because one press uncovers them all. Must not quote the protected words. |
 | `note` | the sentence above | The explanatory sentence for this block. |
+| `noScript` | *"Uncovering it needs JavaScript…"* | The `<noscript>` sentence that retracts `note` when scripts are off. `""` emits none. Never put a URL in it. |
 | `visualHidden` | `true` | Clips the whole control off-screen while keeping it in the accessibility tree. `false` puts it on screen. |
 
-> **These four — `reveal`, `visualHidden`, `label` and `note` — configure the
-> OFF-SCREEN control, so they apply only where `wrapper={false}`.** Passing any
+> **These five — `reveal`, `visualHidden`, `label`, `note` and `noScript` —
+> configure the OFF-SCREEN control, so they apply only where
+> `wrapper={false}`.** Passing any
 > of them together with the drawn wrapper throws, naming the ones it found and
 > what to use instead. Until 0.3.2 they were ignored in silence, which meant a
 > page that set them and changed nothing else rendered differently on upgrade
-> with nothing to say so. Wording moves to `wrapper={{ text }}`; the off-screen
+> with nothing to say so. Wording moves to `wrapper={{ text }}` and
+> `wrapper={{ noScript }}`; the off-screen
 > control itself is `wrapper={false}`. The wrapper takes a `className` of its
 > own — `wrapper={{ className }}`, applied to the frame `<div>` — because
 > `<Shield className>` already lands on the encoded block and on the revealed
@@ -655,8 +665,21 @@ Details that matter, and why:
 
 **JavaScript is required**, along with `BigInt` and `crypto.subtle`. The rest of
 ShieldFont works with JavaScript off — the font does that work — so this is the
-one part that does not. With JS disabled the reader gets the explanatory note
-and no button.
+one part that does not. It fails differently on the two tiers, and both failures
+are quiet. The drawn wrapper renders its Copy and Uncover buttons normally — no
+`hidden`, no dimming — so a reader gets a real, visible, focusable button that
+does nothing at all: no navigation, no error, no state change. With
+`wrapper={false}` the button ships `hidden` and is only un-hidden by the solver
+after its capability check, so the note points at a control that is not in the
+accessibility tree. Copy mediation is gone in the same breath, so copying a
+shielded paragraph yields decoy words with nothing marking them.
+
+Both tiers ship a `<noscript>` for this. A page-level one carries a stylesheet
+that takes the dead controls off the page, in no language at all; a per-block
+one carries one sentence, directly after the note, saying the words cannot be
+shown without JavaScript and what to do about it. Reword it with `noScript`
+(`wrapper={{ noScript }}` on the drawn tier, `a11y.noScript` on the clipped one),
+or set it to `""` to emit nothing.
 
 **`crypto.subtle` is absent on insecure origins.** Plain `http://` (other than
 localhost) has no Web Crypto, so the control reports that it needs an https
@@ -705,15 +728,17 @@ the script wires it by. None of this is visible at all unless you set
   decision in "What the reader hears" that cites a session came from here.
 - **axe-core, `npm run test:axe`.** Scans both the drawn and the off-screen
   arrangements, before and after the unlock, and reports zero violations across
-  WCAG 2.0/2.1/2.2 A and AA. **This is not a pass and not conformance.** axe
-  covers roughly a third of WCAG, and it cannot judge whether the words handed
-  to a screen reader are the words on the screen — which is the entire question
-  here. Nothing in this repository may use it to imply otherwise.
-- **JAWS is unverified.** Nobody has run this under it.
+  its rulesets. **This is not a pass and not conformance.** axe covers roughly a
+  third of WCAG, and it cannot judge whether the words handed to a screen reader
+  are the words on the screen — which is the entire question here.
+- **JAWS is untested.** Nobody has run this under it.
+- **Screen review and touch exploration are untested**, by us or by any harness
+  we have. [#9](https://github.com/isaqueseneda/shieldfont/issues/9) is the
+  standing ask.
 - **No published test page**, and no human-reviewed screen-reader recording.
 
-The focus-visible failure described above is known and unfixed. Do not read this
-list as a conformance claim.
+The missing focus indicator under `wrapper={false}` described above is known and
+unfixed. Do not read this list as a conformance claim.
 
 ---
 
@@ -721,15 +746,13 @@ list as a conformance claim.
 
 Said plainly, because the launch should not claim otherwise:
 
-- **It is not conformance, and it never becomes conformance.** A protected block
-  fails WCAG 2.2 SC 1.3.1 with this mode on. The words are not programmatically
-  determinable; they are obtainable, after a few seconds of the reader's CPU,
-  with JavaScript. No auditor is obliged to accept that as equivalent and we do
-  not ask them to. What this mode buys is that the words are always *reachable*
-  by a human who wants them. That makes a protected page humane. It does not
-  make it compliant, and nothing in `@shieldfont/react` should ever be described
-  as making a site legally accessible. See
-  [the accessibility warning](../README.md#-read-this-first-shieldfont-breaks-accessibility).
+- **It is not conformance, and it never becomes conformance.** With this mode
+  on, the words are still obtainable rather than sitting in the page source:
+  they arrive after a few seconds of the reader's CPU, with JavaScript. No
+  auditor is obliged to accept that as equivalent and we do not ask them to.
+  What this mode buys is that the words are always *reachable* by a human who
+  wants them. That makes a protected page humane. It does not make it compliant.
+  See [the accessibility warning](../README.md#accessibility).
 - **A reader who forced their own font is not reached by any of this.** They see
   the decoy, rendered fluently, with no signal — and the font-load guard cannot
   detect the case. Only the visible wrapper reaches them:
@@ -740,9 +763,10 @@ Said plainly, because the launch should not claim otherwise:
 - **A reader who needs this waits.** Everyone else gets the words instantly.
   That is unequal access however carefully it is engineered, and it is a
   compromise, not a solution.
-- **Keyboard users without a screen reader lose their focus indicator** on the
-  invisible control. WCAG 2.2 SC 2.4.7. The skip-link remedy is not
-  implemented; `visualHidden: false` is the workaround.
+- **Under `wrapper={false}`, keyboard users without a screen reader lose their
+  focus indicator** on the clipped off-screen control. The skip-link remedy is
+  not implemented; `visualHidden: false` is the workaround, and the default
+  draws the control on screen anyway.
 - **Once revealed, the plaintext is in the DOM.** A crawler that runs a real
   browser, presses the button and waits gets the words — having paid the cost,
   which is the deal.
@@ -752,8 +776,9 @@ Said plainly, because the launch should not claim otherwise:
   this. Closing that gap needs a version that works without a React render.
 
 If you work in accessibility engineering and see a better structure, this is the
-highest-value contribution available in the project — starting with NVDA and
-JAWS. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+highest-value contribution available in the project — starting with JAWS,
+screen review and touch exploration. See
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 

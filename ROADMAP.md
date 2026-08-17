@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # ShieldFont Roadmap
 
 The roadmap is a living document. Items here are our current best
@@ -11,10 +12,10 @@ tracking issue. New ideas are welcome via GitHub Discussions.
 
 ## Current release
 
-**v0.1.0: first public release.** The v18 `alpha` mapping (production
-default) plus `beta` / `gamma` / `maxhide`, the fire-then-revert font, and the
-bring-your-own-TTF toolchain. (The project ran a private beta as v1.x–v2.1
-before this public release; see [`CHANGELOG.md`](./CHANGELOG.md).) See
+**v0.3.4.** The v18 `alpha` mapping (production default) plus `beta` /
+`gamma` / `maxhide`, the fire-then-revert font, and the bring-your-own-TTF
+toolchain. (The project ran a private beta as v1.x–v2.1 before the v0.1.0
+public release; see [`CHANGELOG.md`](./CHANGELOG.md).) See
 [`MAPPINGS.md`](./MAPPINGS.md) for the mapping family overview.
 
 Live site: <https://shieldfont.org>
@@ -31,25 +32,16 @@ Live site: <https://shieldfont.org>
 
 ---
 
-## 🟡 Accessibility layer
+## 🔴 Accessibility layer
 
-*Nobody hears a decoy read to them in ordinary reading order. `<Shield>`
-marks the encoded block `aria-hidden="true"`, so assistive software
-skips it in linear and heading navigation rather than voicing a decoy —
-though mouse-tracking, screen review and touch exploration read the DOM
-by position and can still land on a decoy word — and the `a11y` prop
-puts a real alternative in the accessibility tree beside it. Since the
-plain-text mode landed, the author has to produce nothing at all for the
-text route: `a11y={{ mode: "text" }}` on its own is a complete
-configuration. It has been driven through a virtual screen reader in CI,
-through **real NVDA on a Windows runner in CI on every commit**, and by
-hand with real VoiceOver on macOS. **None of this is WCAG
-conformance and none of it is planned to become conformance** — see the
-warning at the top of the README. What is still open is **JAWS**, the
-focus indicator a sighted keyboard user loses to an
-invisible control, the reader whose browser forces its own font and gets
-a fluent decoy with no signal at all, and that the CDN and
-`@shieldfont/core` tiers ship none of this machinery.*
+**Widen accessibility coverage.** Today: real NVDA asserted in CI for
+linear reading, VoiceOver checked by hand, axe clean. That covers most
+screen reader users. Next: JAWS, screen review, touch exploration,
+non-default verbosity, and the non-React tiers. Open:
+[#7](https://github.com/isaqueseneda/shieldfont/issues/7) (NVDA does
+not announce the unlock) and
+[#9](https://github.com/isaqueseneda/shieldfont/issues/9) (JAWS, and
+make the NVDA job blocking). Help wanted on all of it.
 
 **Shipping now: a real alternative rendered outside the hidden
 region.**
@@ -64,11 +56,12 @@ DOM order:
 - `{ mode: "text" }` ships the block's real words **encrypted into the
   page** and gives the reader a button that grinds out the key in their
   own browser. Nothing to generate, nothing to host, no server. The
-  control is **screen-reader-only by default**: nothing about it appears
-  on screen, the unlocked words go to assistive technology clipped
-  off-screen, and the encoded block stays visible and unchanged. Optional
-  `seconds` (14, range 1..30), `reveal: "hidden" | "visible"`, `label`,
-  `note` and `visualHidden` (default `true`).
+  control is **drawn on screen by default** since 0.3.2. With
+  `wrapper={false}` it reverts to screen-reader-only. The unlocked words
+  go to assistive technology clipped off-screen, and the encoded block
+  stays visible and unchanged. Optional `seconds` (14, range 1..30),
+  `reveal: "hidden" | "visible"`, `label`, `note` and `visualHidden`
+  (default `true`).
   Full reference: [`docs/plain-text-mode.md`](docs/plain-text-mode.md).
 - `{ mode: "none" }` is an explicit, auditable opt-out. Omitting the
   prop entirely logs one dev-time warning.
@@ -132,9 +125,9 @@ can already read the block and would otherwise get an unexplained widget
 attached to text that looks fine. The price is real, and it is what
 `wrapper={false}` now buys: a sighted person navigating by keyboard
 **without** a screen reader Tabs into a control they cannot see and
-loses their focus indicator, which fails **WCAG 2.2 SC 2.4.7**. The
-skip-link remedy (clipped until focused, visible while focused) was
-deliberately not taken, because the control was asked to be invisible.
+loses their focus indicator. The skip-link remedy (clipped until
+focused, visible while focused) was deliberately not taken, because the
+control was asked to be invisible.
 Leaving `wrapper` alone, or `visualHidden: false`, puts a control back
 on screen.
 
@@ -144,7 +137,7 @@ on screen.
 alternative yourself. Closing that gap for the non-React tiers is part
 of what remains.
 
-**What this does not fix, and we will not pretend otherwise:**
+**What this does not fix:**
 
 - **OCR is still cheaper.** The text mode stops the accessible path
   being a shortcut. It does not stop scraping and it is not a wall.
@@ -154,13 +147,18 @@ of what remains.
 - **It needs JavaScript**, plus `BigInt` and `crypto.subtle`. The rest
   of ShieldFont works with JS off — the font does that work — so this is
   the one part that does not. `crypto.subtle` is also absent on insecure
-  origins, so plain `http://` breaks it.
-- **A sighted keyboard user loses their focus indicator.** The text
-  mode's control is invisible by default, so someone Tabbing through the
-  page without a screen reader lands on something they cannot see —
-  **WCAG 2.2 SC 2.4.7**. Deliberate, not an oversight, and
-  `visualHidden: false` opts out of it. It is an open problem, not a
-  settled one.
+  origins, so plain `http://` breaks it. What a reader in that state
+  actually sees: on the drawn wrapper, a real, visible, focusable
+  Uncover button that does nothing at all — no navigation, no error, no
+  state change — and with `wrapper={false}`, a note pointing at a button
+  that never leaves `hidden`. Both tiers now ship a `<noscript>` that
+  takes the dead controls off the page and says the words cannot be
+  shown without JavaScript.
+- **With `wrapper={false}`**, a sighted keyboard user loses their focus
+  indicator. The default draws the control. Someone Tabbing through the
+  page without a screen reader lands on something they cannot see.
+  Deliberate, not an oversight, and `visualHidden: false` opts out of
+  it. It is an open problem, not a settled one.
 - **Once revealed, the plaintext is in the DOM.** A crawler that runs a
   real browser, presses the button and waits gets the words, having paid
   the cost. That is the deal, not a leak.
@@ -172,14 +170,15 @@ of what remains.
   on a Windows runner on every commit**, and by hand with real
   **VoiceOver on macOS** — which is where the group chatter, the
   announcements that cut each other off and the text that could not be
-  re-read were all found. **JAWS remains unverified**, and every fix
+  re-read were all found. **JAWS is untested**, and every fix
   VoiceOver forced is a reason to expect it will find its own.
-- **A focus indicator for sighted keyboard users.** The invisible
-  control fails WCAG 2.2 SC 2.4.7 for anyone Tabbing without a screen
-  reader (above). `visualHidden: false` is an escape hatch, not an
-  answer; a design that keeps the control out of a sighted reader's way
-  *and* out of their tab order — or visible once focused without looking
-  like an error — would close this.
+- **A focus indicator for sighted keyboard users.** With
+  `wrapper={false}`, the invisible control leaves anyone Tabbing without
+  a screen reader with nothing visible to follow (above).
+  `visualHidden: false` is an escape hatch, not an answer; a design that
+  keeps the control out of a sighted reader's way *and* out of their tab
+  order — or visible once focused without looking like an error — would
+  close this.
 - **Parity for the non-React tiers:** the CDN paste-in and
   `@shieldfont/core` leave `aria-hidden` and the alternative entirely
   to the author. Whatever the answer is, it has to work without a
@@ -223,11 +222,11 @@ Acceptance criteria, and where we stand against them:
   revealed text that could not be re-read, all now fixed. **JAWS: not
   done.** It has never been run against it.
 - Published test page with a human-reviewed screen-reader recording
-  and automated axe/WCAG scans. **Partly done.** `scripts/axe-audit.mjs` scans both tiers,
-  before and after the unlock, and reports zero violations across
-  WCAG 2.0/2.1/2.2 A and AA — but axe covers roughly a third of WCAG
-  and cannot judge whether the words handed to a screen reader are the
-  words on screen, which is the whole question here. `scripts/style-audit.mjs`
+  and automated axe scans. **Partly done.** `scripts/axe-audit.mjs` scans both tiers,
+  before and after the unlock, and reports zero violations — but axe
+  covers roughly a third of WCAG and cannot judge whether the words
+  handed to a screen reader are the words on screen, which is the whole
+  question here. `scripts/style-audit.mjs`
   (`npm run test:style`) runs beside it and measures the drawn wrapper —
   contrast, hit targets, overflow, perceivable boundaries — inside
   seventeen deliberately hostile host pages: sixteen clean, one a
@@ -236,14 +235,14 @@ Acceptance criteria, and where we stand against them:
   colour by design, cannot be more legible than the page it sits in. That
   settles seventeen hosts and says nothing about the eighteenth. No test
   page is published and no human-reviewed recording exists.
-- A sighted keyboard user keeps a visible focus indicator throughout
-  (WCAG 2.2 SC 2.4.7). **Met at the default since 0.3.2**, where the
-  drawn `wrapper` puts real, `:focus-visible` buttons on screen.
-  **Still not met under `wrapper={false}`**, deliberately, where
-  `visualHidden` defaults to `true` and the control is clipped
-  off-screen; `visualHidden: false` meets it there at the cost of an
-  on-screen control. Meeting one success criterion is not conformance:
-  a protected block still fails SC 1.3.1, which is the mechanism.
+- A sighted keyboard user keeps a visible focus indicator throughout.
+  **Met at the default since 0.3.2**, where the drawn `wrapper` puts
+  real, `:focus-visible` buttons on screen. **Still not met under
+  `wrapper={false}`**, deliberately, where `visualHidden` defaults to
+  `true` and the control is clipped off-screen; `visualHidden: false`
+  meets it there at the cost of an on-screen control. Meeting one
+  criterion here is not conformance, and we do not claim it: what stays
+  out of the page source is the source text, and that is the mechanism.
 - The same guarantees available outside React. **Not started.**
 
 ---
@@ -439,7 +438,7 @@ shipped `.woff2` from 1,007,896 to **826,332 bytes, minus 18.0%**, and
 deletes the glyph-name attack surface outright, which makes name-hash
 salting moot for the web, CDN and React tiers. Verified that nothing
 depends on the names: no references in `packages/core/src` or
-`packages/react/src`, and neither `camouflage_font.py` nor
+`packages/react/src`, and neither `camouflage_font.py` *(dev repo)* nor
 `stamp_font_version.py` reads them.
 
 - Apply it **after** camouflage, so `audit_font.py` keeps names in the
@@ -466,14 +465,24 @@ per pair falling to 74; the fixed floor is around 50 KB.
 This is also what makes per-seed rotation practical: retaining twelve
 monthly fonts costs 2.4 MB, not 12 MB.
 
-**No tool for this exists yet, and that is the gap.** Nothing in
-`scripts/` prunes a GSUB table by vocabulary. The deliverable is a new
-`scripts/subset_font.py` that takes a built font plus a word list (or a
-crawl of the site's own pages) and emits the scoped `.woff2`, with the
-`post` drop as a flag on the same tool. It is the largest single win
-available anywhere in the project and it is unclaimed.
+**The tool now exists.** *(Shipped as `scripts/subset_font.py`; moves to
+`CHANGELOG.md` with the next release.)* It takes a built font plus a word
+list, a crawl of the site's own pages, or piped content, prunes the
+LigatureSubst / MultipleSubst / chain-context coverages symmetrically
+across all five lookups, and emits the scoped `.woff2` — with the `post`
+drop as a flag (`--post-format-3`) on the same tool. Every run also writes
+`<out>.map.json`, the mapping pruned to match, which is what keeps an
+uncovered word falling back to plain text instead of to a visible decoy.
+Usage is documented in
+[`docs/custom-faces.md`](./docs/custom-faces.md#shrinking-the-font-to-what-your-site-actually-uses).
 
-Acceptance criteria:
+What is still unclaimed is wiring it into the packages: it is a build-time
+script today, invoked by hand, with nothing in `@shieldfont/react` or the
+CDN tier that knows a subset exists.
+
+Acceptance criteria for a subset build — verify each one before you ship
+it, with `audit_font.py --font <out>.ttf --mapping <out>.map.json
+--mapping-id <id>` and the script's own `--self-check`:
 
 - `audit_font.py` round-trips every pair in the subset, all case
   variants, with no substring collisions.
@@ -502,8 +511,8 @@ KenLM, Pythia-160M, Wiki-KenLM), and emit a Wilson 95% interval per gate and
 per variant — the interval matters, since at the FineWeb-Edu gate the
 denominator is 134 chunks, small enough that the interval is the story.
 
-**2. The evaluation sample is not deterministic.** `phase2_common.py:68`
-seeds with `random.Random(SEED + hash(corpus) % 1000)`, and Python
+**2. The evaluation sample is not deterministic.**
+`benchmarks/v8/scripts/phase2_common.py (dev repo):68` seeds with `random.Random(SEED + hash(corpus) % 1000)`, and Python
 randomises string hashing per process, so a re-run draws a different
 sample of chunks and the exact denominator cannot be regenerated. The
 rate is unaffected in expectation; the exact counts are not

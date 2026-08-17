@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * REAL NVDA audit. Windows only.
  *
@@ -40,13 +41,15 @@
  * ## What a green run does NOT license
  *
  * NVDA, at one version, at default verbosity, in one browser, reading linearly.
+ * That is the part this harness covers: reading down the page, a screen reader
+ * is never handed the scrambled version, and the checks below assert it.
  * It says nothing about JAWS. It says nothing about non-default verbosity — and
  * note that the focus-stop decision above exists precisely BECAUSE default
- * verbosity suppresses descriptions, so the setting is load-bearing. And it
- * cannot reach touch exploration or screen review, which is the actual finding
- * in issue #2: `aria-hidden` governs reading order, not screen position, so a
- * reader moving by screen position can still land on a decoy. No automated
- * harness reaches that. Keep saying so.
+ * verbosity suppresses descriptions, so the setting is load-bearing. Screen
+ * review and touch exploration work differently and no automated harness we
+ * have reaches them. Issue #2 reported that a decoy could be reached that way;
+ * we have not reproduced it in VoiceOver or iOS touch. Covering it properly is
+ * the standing ask in issue #9.
  */
 import { nvda, WindowsKeyCodes, WindowsModifiers } from "@guidepup/guidepup";
 import { chromium } from "playwright";
@@ -54,12 +57,18 @@ import { BLOCKS, DECOY_MARKERS, serveFixture } from "./lib/a11y-fixture.mjs";
 
 if (process.platform !== "win32") {
   console.error(
-    "\nnvda-audit: Windows only — NVDA does not exist on " + process.platform + ".\n" +
+    "\n  ##############################################################\n" +
+      "  ##  SKIPPED — NOTHING WAS ASSERTED. THIS IS NOT A PASS.     ##\n" +
+      "  ##############################################################\n\n" +
+      "nvda-audit: Windows only — NVDA does not exist on " + process.platform + ".\n" +
       "  On macOS/Linux run `npm run test:a11y`, which drives a simulated\n" +
       "  accessibility tree and runs anywhere. The real-NVDA job runs in CI on\n" +
-      "  windows-latest; see .github/workflows/test.yml.\n",
+      "  windows-latest; see .github/workflows/test.yml.\n\n" +
+      "  Exiting non-zero deliberately: exit 0 here reported success having\n" +
+      "  checked nothing. The only caller is the windows-latest `nvda` job in\n" +
+      "  .github/workflows/test.yml, so no CI job takes this path.\n",
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 const failures = [];

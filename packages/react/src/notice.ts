@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * The reader-facing notice — the visible half of the accessible plain-text path.
  *
@@ -279,6 +280,32 @@ export interface ShieldNotice {
   repeat?: string;
 
   /**
+   * The sentence shown INSIDE `<noscript>`, immediately after {@link text}.
+   *
+   * With scripts off the unlock cannot run at all, so {@link text} — "please
+   * uncover the text before reading" — is an instruction pointing at a control
+   * that does nothing. On the drawn tier the Uncover button is fully rendered
+   * and fully focusable, so a reader presses it and gets silence; on the
+   * clipped tier the button is `hidden` and never un-hidden, so the sentence
+   * points at nothing in the accessibility tree at all. Both are a lie told to
+   * the exact readers this component exists for.
+   *
+   * Three properties of the default are deliberate:
+   *
+   *   - It opens with "Uncovering it", so it grammatically RETRACTS the
+   *     sentence directly before it. The pair has to be coherent read aloud,
+   *     because that is how it will be met.
+   *   - The impossibility comes BEFORE the remedy. A listener who stops after
+   *     one clause must not be left with false hope.
+   *   - It names no mechanism — no puzzle, no `BigInt`, no `crypto.subtle`.
+   *     Same reasoning as {@link brokenText}: the reader wants to know why the
+   *     words are not there and what to do, not what the machinery is called.
+   *
+   * Set it to `""` to emit nothing.
+   */
+  noScript?: string;
+
+  /**
    * `"top"` (default) draws the strip once, above the text.
    *
    * `"both"` repeats it at the end of the box, for a passage long enough that a
@@ -333,10 +360,10 @@ export interface ShieldNotice {
      * The longer spoken form of {@link show}, e.g. `"Uncover the plain text"`
      * against a visible `"Uncover"`.
      *
-     * It is USED ONLY IF IT STARTS WITH the visible label. WCAG 2.2 SC 2.5.3
-     * (Label in Name) requires the accessible name to begin with the visible
-     * words, because a speech-input user says what they can see — "click
-     * Uncover" — and a name that does not contain it matches nothing. So an
+     * It is USED ONLY IF IT STARTS WITH the visible label. The accessible name
+     * has to begin with the visible words, because a speech-input user says
+     * what they can see — "click Uncover" — and a name that does not contain
+     * it matches nothing. So an
      * author who renames `show` without renaming this gets their own label
      * back rather than a silently broken voice control.
      */
@@ -437,6 +464,7 @@ export interface ResolvedNotice {
   text: string;
   brokenText: string;
   repeat: string;
+  noScript: string;
   position: "top" | "both";
   /** Unset when the author gave none — `className={undefined}` emits nothing. */
   className?: string;
@@ -522,6 +550,31 @@ export const DEFAULT_REPEAT = "Scrambled text. Uncover the original below.";
 export const DEFAULT_BROKEN =
   "The text below isn’t showing correctly. Uncover the original to read it.";
 
+/**
+ * What a reader with scripts off is told, straight after {@link DEFAULT_TEXT}.
+ *
+ * {@link DEFAULT_TEXT} is left alone deliberately. It is correct in the common
+ * case, it was tuned across several releases, and with this sentence directly
+ * after it in DOM order the pair reads as instruction-then-retraction:
+ *
+ *   "If you use a screen reader, custom font, or translator, please uncover
+ *    the text before reading. Uncovering it needs JavaScript, which is turned
+ *    off in this browser, so the original words cannot be shown here. Turn
+ *    JavaScript on for this site and reload."
+ *
+ * Permanently hedging the first sentence would degrade it for every reader who
+ * does have JavaScript, which is nearly all of them.
+ *
+ * NO URL, EVER. A link to a plaintext copy is exactly what 0.2.0 removed, and
+ * inside `<noscript>` it would sit in the source unconditionally — readable by
+ * every crawler, whether or not it runs scripts. This string is a module
+ * constant, byte-identical on every block, and is never derived from the
+ * protected words, the mapping, or anything else about the block.
+ */
+export const DEFAULT_NOSCRIPT =
+  "Uncovering it needs JavaScript, which is turned off in this browser, so the " +
+  "original words cannot be shown here. Turn JavaScript on for this site and reload.";
+
 export function resolveNotice(n: ShieldNotice | true): ResolvedNotice {
   const cfg: ShieldNotice = n === true ? {} : n;
   const l = cfg.labels ?? {};
@@ -531,6 +584,9 @@ export function resolveNotice(n: ShieldNotice | true): ResolvedNotice {
     text,
     brokenText: cfg.brokenText ?? DEFAULT_BROKEN,
     repeat: cfg.repeat ?? DEFAULT_REPEAT,
+    // `??` and not `||`, so `noScript: ""` is an author turning it off rather
+    // than an empty string being quietly replaced by the default.
+    noScript: cfg.noScript ?? DEFAULT_NOSCRIPT,
     position: cfg.position ?? "top",
     // NOT defaulted to "". React renders `className=""` as a literal empty
     // attribute, which is a byte of signature on every wrapper on the page for
@@ -680,8 +736,26 @@ function innerCss(F: string, attr: string): string {
     `${F} [${attr}-strip][${attr}-toasting] [${attr}-say-full],` +
     `${F} [${attr}-strip][${attr}-toasting] [${attr}-icon]{opacity:0;transition:opacity .16s;}` +
     `@media (prefers-reduced-motion:reduce){${F} [${attr}-toast]{transition:opacity .01ms;transform:none;}}` +
+    // BOTH CLIP PROPERTIES, AND THE DEPRECATED ONE IS THE LOAD-BEARING HALF.
+    // The sentence ships twice — a visible copy marked aria-hidden for eyes, a
+    // clipped copy for ears — and exactly one of the two is meant to survive
+    // wherever the page is re-rendered. Firefox Reader View and both of
+    // Chrome's reading-mode paths drop aria-hidden subtrees, so they take the
+    // clipped copy and only that. Safari Reader ignores aria-hidden entirely,
+    // so it takes the visible copy; it then decides what else is hidden by
+    // reading getComputedStyle, and the only clipping it recognises there is
+    // the legacy `clip:rect()` form. With `clip-path` alone Safari saw nothing
+    // hiding this element and extracted the sentence a SECOND time, in full,
+    // directly after the first.
+    //
+    // `clip` is dead CSS everywhere else: it only applies to positioned
+    // elements, `clip-path` overrides it in every engine that supports both,
+    // and neither one removes a node from the accessibility tree — which is
+    // exactly why this pair, and not `display:none`, is the sr-only technique.
+    // Nothing about the rendered page changes; the element was already
+    // absolute, 1x1 and `overflow:hidden` before this line.
     `${F} .${attr}-clipped{position:absolute;width:1px;height:1px;overflow:hidden;`+
-    `clip-path:inset(50%);white-space:nowrap;}` +
+    `clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;}` +
     `${F} [${attr}-say-full]{margin:0;font-family:inherit;font-size:12px;`+
     `line-height:1.32;font-weight:400;text-transform:none;letter-spacing:normal;`+
     // NO text-wrap:balance. Balancing evens the line lengths, which on a
@@ -690,16 +764,17 @@ function innerCss(F: string, attr: string): string {
     // broken to loading to open — and the strip visibly jumps under the
     // reader mid-solve. Ordinary wrapping fills each line and only the
     // last one moves.
-    // .80, AND EVERY STEP OF THIS NUMBER'S HISTORY IS A WCAG 2.2 SC 1.4.3
-    // FAILURE SOMEBODY MEASURED. It was .55, which failed on every host but
-    // pure black; it went to .70; the style audit then found .70 failing on a
-    // host nobody had thought to try. Measured on a white page, 12px — this
+    // .80, AND EVERY STEP OF THIS NUMBER'S HISTORY IS A CONTRAST MEASUREMENT
+    // SOMEBODY TOOK. It was .55, which came out below what a low-vision reader
+    // can read on every host but pure black; it went to .70; the style audit
+    // then found .70 landing under 4.5:1 on a host nobody had thought to try.
+    // Measured on a white page, 12px — this
     // inherits `currentColor`, so the host picks the colour and we pick only
     // the fade:
     //
     //          host #000   #111   #222   #333   #444   #374151 (Tailwind gray-700)
     //   .55         4.76   4.17   3.67   3.24   2.88    3.19
-    //   .70         8.52   7.07   5.89   4.94   4.17    4.14   ← fails
+    //   .70         8.52   7.07   5.89   4.94   4.17    4.14   ← under 4.5:1
     //   .80        10.2    8.51   7.14   6.03   5.17    5.13
     //
     // gray-700 on white is Tailwind's default body colour and therefore one of
@@ -749,8 +824,8 @@ function innerCss(F: string, attr: string): string {
     // strip on every light host in the audit — an outline nobody can see, on
     // the only two controls in the component. Derived from `currentColor` at
     // 62% it tracks the host the way the rest of this sheet does and clears the
-    // 3:1 SC 1.4.11 asks of a control boundary on every host measured: 3.27 on
-    // white, 3.32 on Tailwind gray-700, 4.95 on a dark theme.
+    // 3:1 a control boundary needs in order to be seen at all, on every host
+    // measured: 3.27 on white, 3.32 on Tailwind gray-700, 4.95 on a dark theme.
     //
     // 62% and not 52%, which was the first attempt: it cleared white at 3.27
     // and then failed at 2.69 on a gray-700 host, because the tint is mixed
@@ -768,7 +843,7 @@ function innerCss(F: string, attr: string): string {
     `font-family:inherit;font-size:11px;line-height:1.4;letter-spacing:.06em;` +
     `text-transform:uppercase;font-weight:500;padding:7px 13px;white-space:nowrap;}` +
     `${F} button:hover{background:rgba(128,128,128,.14);}` +
-    // WCAG 2.2 SC 2.4.7. The UA ring was never removed, so this is not a fix
+    // THE FOCUS INDICATOR. The UA ring was never removed, so this is not a fix
     // for a missing indicator — it is a fix for an ILLEGIBLE one: the primary
     // button paints `background:currentColor`, and a default ring drawn in the
     // text colour on a background of the text colour is invisible. The offset
@@ -859,7 +934,9 @@ function innerCss(F: string, attr: string): string {
     `${F} button[${attr}-primary]:focus-visible{outline-offset:-4px;` +
     `outline-color:oklch(from currentColor clamp(0,(.62 - l)*infinity,1) 0 0);}}` +
     `${F} button svg{width:13px;height:13px;flex:none;}` +
-    // 24x24, not 20x20: WCAG 2.2 SC 2.5.8 (Target Size, Minimum) is AA and
+    // 24x24, not 20x20: 24 by 24 CSS pixels is the smallest touch target most
+    // guidance accepts, and anything under it is a control a reader with
+    // imprecise aim has to hunt for.
     `${F} [${attr}-icon]{display:inline-flex;align-items:center;flex:none;opacity:.75;}` +
     `${F} [${attr}-icon="off"]{opacity:1;}` +
     `@media (prefers-color-scheme:dark){${F} [${attr}-toast]{color:#57E08C;}}` +
@@ -917,7 +994,8 @@ function innerCss(F: string, attr: string): string {
     // the text colour is exact at both ends and undefined in the middle: a host
     // whose body text is around #8a8a8a lands on the wrong side of .62 and gets
     // a light green on a white page, 1.42:1. That host's own body text is 3.45:1
-    // and fails SC 1.4.3 before this component draws anything, so the ambiguity
+    // — already below what a low-vision reader can read — before this component
+    // draws anything, so the ambiguity
     // exists only where the page has already lost — but it is a real limit and
     // it is measured, as `host-below-the-line` in scripts/style-audit.mjs. The
     // Uncover button is not affected: its glyphs are derived against the FILL,
@@ -1141,8 +1219,14 @@ export function altCss(attr: string): string {
     // clip technique is the one every screen reader handles. `:empty` stops
     // matching the moment the script writes a word, so it rejoins the flow
     // exactly when it has something to occupy a line with.
+    // `clip` alongside `clip-path` for the reason spelled out on the
+    // `-clipped` rule above: Safari is the one engine that reads computed
+    // style to decide what a re-render should leave out, and the legacy form
+    // is the only clipping it recognises. Empty is the normal state of this
+    // element, so there is rarely anything here to leave out — the pair is
+    // here so the two hiding rules in this file cannot drift apart.
     `${G} > [${attr}-status]:empty{position:absolute;width:1px;height:1px;`+
-    `margin:0;padding:0;overflow:hidden;clip-path:inset(50%);}`
+    `margin:0;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);}`
   );
 }
 

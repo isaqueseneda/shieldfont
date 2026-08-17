@@ -1,3 +1,4 @@
+# On the wording of commit 50311c1, see the message of the commit that added this line.
 name: Test
 
 on:
@@ -60,7 +61,7 @@ jobs:
       # said in the same repository that no axe scan had ever been run. It
       # settles the machine-checkable third of WCAG — contrast and accessible
       # names, both of which were guesses — and nothing beyond it. A clean run
-      # here is NOT conformance and no document may cite it as such.
+      # here is NOT conformance.
       - name: axe scan
         if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
         env:

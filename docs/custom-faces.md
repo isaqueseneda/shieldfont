@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Custom faces: bring your own typeface
 
 > **Naming reminder.** Throughout this page: *ShieldFont* (CamelCase) is the protocol; *ShieldFont Optik* is the flagship typeface; *a ShieldFont* is any base font that has been converted using the protocol. See the [introduction](./introduction.md#a-note-on-names-protocol-vs-typeface) for the full naming convention.
@@ -23,9 +24,14 @@ python3 scripts/generate_font.py \
   --artifact-dir build-artifacts \
   --deterministic --source-date-epoch 0
 
-# Audit the build (optional but recommended):
+# Audit the build (optional but recommended). --mapping-id must match the id
+# the build used, or the audit hashes the expected glyph names with the wrong
+# salt and fails on a correct font. Here that id is "yourtypeface": the
+# --prefix minus "shieldfont-", because this mapping file carries no
+# `_meta.mappingId` of its own. audit_font.py defaults to "m15en".
 python3 scripts/audit_font.py --font public/fonts/shieldfont-yourtypeface.ttf \
   --mapping public/fonts/shieldfont-yourtypeface.map.json \
+  --mapping-id yourtypeface \
   --artifact-dir build-artifacts \
   --web-font public/fonts/shieldfont-yourtypeface.woff2
 ```

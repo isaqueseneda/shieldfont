@@ -1,3 +1,4 @@
+// On the wording of commit 50311c1, see the message of the commit that added this line.
 /**
  * Time-lock puzzles — the build-time half of the accessible plain-text path.
  *
@@ -5,7 +6,7 @@
  *
  * `<Shield>` marks its encoded block `aria-hidden`, because voicing a decoy is
  * worse than voicing nothing. That leaves assistive technology with silence,
- * which fails WCAG 2.2 SC 1.3.1 on any reading. The obvious fix — put the
+ * and silence on its own is not an alternative. The obvious fix — put the
  * original words at a URL and link to it — shipped in 0.2.0 as
  * `a11y={{ mode: "text", href }}` and was REMOVED in this release, because a URL
  * cannot be offered to a screen reader without being offered to everyone else.

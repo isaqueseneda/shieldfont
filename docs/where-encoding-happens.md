@@ -1,3 +1,4 @@
+<!-- On the wording of commit 50311c1, see the message of the commit that added this line. -->
 # Where the encoding happens (and how it leaks)
 
 There is exactly one rule in ShieldFont:
@@ -66,10 +67,10 @@ When `<Shield>` runs in the browser, it does not only leak that one page. It
 bundles the dictionary:
 
 ```
-alpha   11971 pairs | in bundle: 11971 (100%)
-beta    12035 pairs | in bundle: 12035 (100%)
-gamma   12037 pairs | in bundle: 12037 (100%)
-maxhide  2535 pairs | in bundle:  2535 (100%)
+alpha   11970 pairs | in bundle: 11970 (100%)
+beta    12034 pairs | in bundle: 12034 (100%)
+gamma   12036 pairs | in bundle: 12036 (100%)
+maxhide  2534 pairs | in bundle:  2534 (100%)
 ```
 
 All 38,574 pairs, in plain text, e.g. `confidential:"guilty"`. One misplaced
