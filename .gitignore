@@ -39,6 +39,7 @@ public/fonts/*
 
 # Local debug/QA tooling output — never meant to ship, not evidence
 public/*.html
+public/*.json
 
 # Claude Code session artifacts
 .claude/
@@ -72,6 +73,12 @@ public/fonts/BEFORE-*
 # trailing slash: the directory does not exist until a build runs, and a
 # dir-only pattern cannot match a path that is not there yet.
 scripts/fonts
+
+# Portable Win64 console build output and local PyInstaller work files
+scripts/.portable-build-venv/
+.portable-build/
+.shieldfont-cache/
+dist/
 
 # Local-only working files (never commit) — e.g. RECONCILE-MANIFEST.local.md, TODO-BEFORE-RELEASE.local.md
 *.local.md

@@ -1,0 +1,7 @@
+{
+  "fixture_id": "seedfont-task4-v1",
+  "script": "latn",
+  "language": "dflt",
+  "features": ["ccmp", "clig", "calt", "liga", "kern", "locl"],
+  "axes": ["wght=400", "wdth=100"]
+}

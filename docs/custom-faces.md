@@ -20,7 +20,9 @@ python3 scripts/generate_font.py \
   --base-path /path/to/your-typeface.ttf \
   --name "ShieldFont YourTypeface" \
   --prefix shieldfont-yourtypeface \
-  --mapping-path scripts/v18alpha_for_font.json
+  --mapping-path scripts/v18alpha_for_font.json \
+  --artifact-dir build-artifacts \
+  --deterministic --source-date-epoch 0
 
 # Audit the build (optional but recommended). --mapping-id must match the id
 # the build used, or the audit hashes the expected glyph names with the wrong
@@ -28,12 +30,117 @@ python3 scripts/generate_font.py \
 # --prefix minus "shieldfont-", because this mapping file carries no
 # `_meta.mappingId` of its own. audit_font.py defaults to "m15en".
 python3 scripts/audit_font.py --font public/fonts/shieldfont-yourtypeface.ttf \
-  --mapping scripts/v18alpha_for_font.json --mapping-id yourtypeface
+  --mapping public/fonts/shieldfont-yourtypeface.map.json \
+  --mapping-id yourtypeface \
+  --artifact-dir build-artifacts \
+  --web-font public/fonts/shieldfont-yourtypeface.woff2
 ```
 
-Outputs land in `public/fonts/` as `.ttf`, `.woff2`, and a ready `@font-face` CSS. The `--mapping-path` argument decides which dictionary the font decodes. The example above uses the shipped `alpha` pool; to build against a private mapping instead, mint one first and pass its path (see [Custom mappings](./custom-mappings.md)).
+On Windows x64, the same workflow is available without installing Python:
+
+```powershell
+.\dist\shieldfont-cli.exe generate_font `
+  --base-path .\your-typeface.ttf `
+  --name "ShieldFont YourTypeface" `
+  --prefix shieldfont-yourtypeface `
+  --mapping-path .\scripts\v18alpha_for_font.json `
+  --artifact-dir .\build-artifacts
+
+.\dist\shieldfont-cli.exe audit_font `
+  --font .\public\fonts\shieldfont-yourtypeface.ttf `
+  --mapping .\public\fonts\shieldfont-yourtypeface.map.json `
+  --artifact-dir .\build-artifacts `
+  --web-font .\public\fonts\shieldfont-yourtypeface.woff2
+```
+
+Run each command with `--help` for the full forwarded upstream parameter set.
+
+Outputs land in `public/fonts/` as `.ttf`, `.woff2`, `.map.json`, and a ready
+`@font-face` CSS. The `--mapping-path` argument decides which dictionary the
+font decodes. The example above uses the shipped `alpha` pool; to build against
+a private mapping instead, mint one first and pass its path (see [Custom
+mappings](./custom-mappings.md)).
 
 The pairing rule from the mappings guide applies unchanged here: a page renders correctly only under a font built from the same mapping that encoded it. Changing the base typeface never changes the pairs; changing the mapping always requires a new font build.
+
+### Flags, identity, and deterministic output
+
+The build identity includes the mapping, source font, compatibility settings,
+and safe digests of any `--document-nonce` or `--tenant-id`. The raw values are
+not written to logs, file names, manifests, or browser artifacts. Use
+`--cache-key` only for an already-opaque cache label; it is also never logged
+raw. `--glyph-name-salt` is optional for private mappings and must be repeated
+to reproduce the same glyph names.
+
+Useful build flags:
+
+| Flag | Purpose |
+|---|---|
+| `--deterministic` | Require the pinned in-process HarfBuzz backend. |
+| `--source-date-epoch N` | Set reproducible OpenType timestamps; `0` is a useful fixed value. |
+| `--artifact-dir DIR` | Emit the canonical artifact set and hash-complete manifest. |
+| `--script-langsys SCRIPT[:LANG]` | Bound generated substitutions to explicit OpenType scopes; repeatable. |
+| `--supported-mark-set ID` / `--supported-marks ...` | Bound combining-mark handling. |
+| `--gsub-optimization auto\|format2\|format3` | Evaluate or select the deterministic GSUB boundary representation. |
+| `--json-out PATH` | Write machine-readable diagnostics without mapping words, nonces, or tenant values. |
+
+The canonical artifact roles are deliberate:
+
+| Artifact | Role | Publish? |
+|---|---|---|
+| `mapping.json`, `font-web.woff2` | Public encoder/font pair | Yes, when needed by the browser. |
+| `mapping.audit.json`, `mapping.audit.csv`, `font-audit.ttf` | Private reverse/audit material | No. Keep local or in restricted storage. |
+| `shaping-audit.json`, `performance.json`, `security-report.md` | Verification evidence | No browser delivery; publish only after review if appropriate. |
+| `build-manifest.json` | Public-role inventory and hashes | Treat paths and contents as public metadata. |
+
+`SOURCE_DATE_EPOCH` or `--source-date-epoch` is the only supported timestamp
+input for deterministic artifacts. The tools do not invent timestamps in
+canonical metadata. A build can still contain required font license and family
+records; those are not mapping data.
+
+### Scripts, languages, and combining marks
+
+The builder normalizes mapping words to Unicode NFC and keeps the base
+`ccmp`/`locl`, GPOS, and GDEF data intact. For a multilingual font, restrict
+the generated lookup activation explicitly:
+
+```bash
+python3 scripts/generate_font.py ... \
+  --script-langsys latn:ENG \
+  --script-langsys cyrl:RUS \
+  --script-langsys cyrl:UKR \
+  --script-langsys cyrl:BEL \
+  --script-langsys cyrl:SRB \
+  --supported-mark-set basic-mn-v1
+```
+
+Use `--script-langsys-map scopes.json` for a JSON object/list of the same
+selectors. Three-letter OpenType language tags are serialized with their
+required trailing byte. Supported combining marks are bounded and filtered
+through GDEF; unsupported marks are intentionally a shaping boundary. When
+the HTML document has no `lang`, content tooling falls back to `dflt` rather
+than guessing a language.
+
+### Feature order and compatibility
+
+Generated substitutions use three explicit stages:
+
+1. **Required source stage**: `ccmp` is preferred, with `locl` as the
+   compatibility fallback when a base face has no `ccmp` record. The generated
+   fire lookups are inserted before the base face's lookups, preserving the
+   placement used by Word, WebKit, and other clients that apply compatibility
+   features early.
+2. **Required restoration stage**: `rlig` runs after the fire stage. Its class
+   and boundary lookups invoke the internal `MultipleSubst` reversal lookup,
+   so the order is always fire -> class/boundary check -> restore.
+3. **Optional stage**: `calt` (and discretionary `dlig`/`liga`) is not required
+   by ShieldFont. Disabling optional ligatures does not disable the generated
+   word rules.
+
+The builder prints the feature and lookup IDs, compatibility fallback choice,
+subtable byte budgets, and GDEF caret counts/ranges without printing mapping
+words. This makes an audit able to compare engines while keeping diagnostics
+safe.
 
 ---
 
@@ -56,7 +163,9 @@ python3 scripts/subset_font.py \
   --mapping public/fonts/shieldfont-alpha.map.json \
   --content 'app/**/*.tsx' --content content/ \
   --out public/fonts/shieldfont-alpha-subset \
-  --keep-min 500 --report
+  --keep-min 500 --report \
+  --artifact-dir build-artifacts/subset \
+  --source-date-epoch 0
 ```
 
 It also accepts `--wordlist top-2000.txt` or piped content (`--stdin --format html`). `--css` writes a matching `@font-face`.
@@ -76,6 +185,13 @@ Guard the third case in CI. Each run writes `<out>.subset.json` with a `contentH
 
 - **It is not wired into the npm packages.** `@shieldfont/react` bundles the full fonts, and there is no prop or flag that subsets them. This is a build-time tool you run yourself against a built font, and then self-host the output.
 - **Subset per site, not per page.** A font per URL defeats HTTP caching and gives every page a distinct font fingerprint, which is the opposite of what [concealment](./concealment.md) is trying to achieve.
+
+Subsetting also accepts `--inventory` as an orchestration alias for
+`--content`, `--reserve-aliases N` or repeated `--reserve-alias WORD` for
+future coverage, and `--document-nonce`/`--tenant-id` for cache-isolated
+identities. Only digests enter subset manifests and diagnostics. The emitted
+`<out>.map.json` remains the only encoder mapping for the subset; do not
+replace it with the private audit mapping or the original full mapping.
 
 Why `pyftsubset` alone will not do this: GSUB layout closure walks the ligature table and pulls every word composite straight back in, so the font stays at ~36k glyphs at every vocabulary size. The layout rules have to be pruned first — and symmetrically across all five lookups, or a half-fired substitution is left un-revertible. That is the work this script does.
 

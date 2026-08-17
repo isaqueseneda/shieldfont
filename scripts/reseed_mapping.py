@@ -1,46 +1,52 @@
 #!/usr/bin/env python3
-"""reseed_mapping.py — generate YOUR OWN private ShieldFont mapping from your own
-seed, by re-pairing the shipped v18 word pool WITHIN its grammatical buckets.
+"""Create a deterministic, optionally document-specific grouped mapping.
 
-This is the same in-bucket re-pairing method used to derive the shipped β/γ
-variants from α (same pool, same buckets, seeds 1 and 2), but it is NOT a
-byte-reproduction of them: running this script at --seed 1 reproduces only 194
-of β's 12,034 entries, because the shipped variants also went through the full
-build pipeline (semantic veto, collision drops) that this script skips. What you
-get is an equivalent-quality mapping of your own, not a copy of a shipped one.
-
-A re-seeded mapping is unique to you, so a scraper holding the PUBLIC alpha
-dictionary cannot batch-decode your pages with it. That is dictionary reuse, and
-it is the only attack a seed defeats: the font you serve still encodes your
-pairs, so anyone who downloads it can invert THAT font and recover your
-originals, seed or no seed. See docs/custom-mappings.md.
-
-  in  : a v18 pairs file whose entries carry a `bucket` (default: shipped alpha)
-  out : a flat {src: tgt} mapping JSON — the exact form the encoder consumes,
-        so you can `encode(text, yourMapping)` immediately.
-
-IMPORTANT — a custom mapping needs a MATCHING font. The shipped alpha/beta/gamma/
-max fonts render ONLY their own pairs; render a custom mapping with a shipped
-font and readers see gibberish. Build a matching font after generating — see
-docs/custom-mappings.md / benchmark/README.md §3.
-
-CAVEAT — this re-pairs within grammatical buckets (decoys stay POS/inflection-
-matched and read naturally) but does NOT re-run the semantic veto the from-
-scratch pipeline applies, so a small fraction of pairs may be closer in meaning
-than ideal. For a fully veto-clean build from a seed, use the v7 pipeline in
-benchmark/README.md §3A.
-
-Usage:
-  python3 scripts/reseed_mapping.py --seed 12345 --out scripts/myseed_for_font.json
+The default output records ordered alias candidates and safe nonce metadata;
+--legacy-flat/--compatibility keeps the historical involution output.
 """
 import argparse
+import hashlib
 import json
-import random
-from collections import defaultdict
+import sys
+from collections import OrderedDict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from mapping_contract import (  # noqa: E402
+    MappingContractError,
+    flatten_contract,
+    load_contract,
+    nonce_info,
+    validate_contract,
+)
+
 DEFAULT_PAIRS = ROOT / "benchmark/data/v7/pairs_v7_alpha_v15_0_1_0_0_0_0.json"
+
+
+def _ordered(words, seed, nonce, group_id):
+    def key(word):
+        return hashlib.sha256(
+            f"{seed}\0{nonce}\0{group_id}\0{word}".encode("utf-8")
+        ).digest()
+    return sorted(words, key=key)
+
+
+def _legacy_groups(data):
+    groups = OrderedDict()
+    assigned = set()
+    digit_sources = set(data.get("_digit_permutation", {}))
+    for pair in data.get("all_pairs", []):
+        source, target = pair.get("src"), pair.get("tgt")
+        if source in digit_sources or target in digit_sources:
+            continue
+        bucket = pair.get("bucket", "legacy")
+        group = groups.setdefault(bucket, [])
+        for word in (source, target):
+            if word not in assigned:
+                group.append(word)
+                assigned.add(word)
+    return groups
 
 
 def main() -> int:
@@ -48,51 +54,98 @@ def main() -> int:
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--pairs", default=str(DEFAULT_PAIRS))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--legacy-flat", "--compatibility", action="store_true",
+                    help="Emit the legacy flat involution")
+    ap.add_argument("--case", default="preserve")
+    ap.add_argument("--document-nonce", "--nonce", default=None)
     a = ap.parse_args()
 
-    data = json.loads(Path(a.pairs).read_text())
-    all_pairs = data.get("all_pairs", [])
-    if not all_pairs:
-        raise SystemExit(f"no `all_pairs` in {a.pairs}")
+    data = json.loads(Path(a.pairs).read_text(encoding="utf-8"))
+    if "groups" in data:
+        source_contract = load_contract(a.pairs, compatibility=False)
+        groups = OrderedDict()
+        for group in source_contract["groups"]:
+            groups[group["id"]] = list(dict.fromkeys(
+                [entry["source"] for entry in group["sources"]] +
+                [alias for entry in group["sources"] for alias in entry["aliases"]]
+            ))
+    else:
+        groups = _legacy_groups(data)
+    digits = data.get("_digit_permutation", {})
+    if not groups:
+        raise SystemExit(f"no source groups in {a.pairs}")
 
-    # each word assigned to exactly ONE bucket (first seen) so re-pairing yields
-    # a clean involution — a word in two buckets would break m[m[x]] == x.
-    by_bucket: dict[str, list[str]] = defaultdict(list)
-    seen: set[str] = set()
-    for p in all_pairs:
-        for w in (p["src"], p["tgt"]):
-            if w not in seen:
-                seen.add(w)
-                by_bucket[p["bucket"]].append(w)
-
-    rng = random.Random(a.seed)
-    flat: dict[str, str] = {}
+    flat = {}
+    output_groups = []
     unpaired = 0
-    for bucket, words in sorted(by_bucket.items()):
-        ws = sorted(words)
-        rng.shuffle(ws)
-        i = 0
-        while i + 1 < len(ws):
-            x, y = ws[i], ws[i + 1]
-            if x != y:
-                flat[x] = y
-                flat[y] = x
-            i += 2
-        if len(ws) % 2 == 1:
-            unpaired += 1  # odd word out passes through unencoded
+    nonce = a.document_nonce or ""
+    for group_id, words in groups.items():
+        ordered = _ordered(sorted(words), a.seed, nonce, group_id)
+        if len(ordered) % 2:
+            unpaired += 1
+            ordered = ordered[:-1]
+        sources = []
+        for index in range(0, len(ordered), 2):
+            left, right = ordered[index:index + 2]
+            flat[left] = right
+            flat[right] = left
+            sources.append({"source": left, "aliases": [right], "position": len(sources)})
+            sources.append({"source": right, "aliases": [left], "position": len(sources)})
+        if sources:
+            grammar = group_id if "." in group_id else (
+                "special.digits" if group_id == "special.digits" else group_id
+            )
+            output_groups.append({
+                "id": group_id,
+                "version": "1",
+                "grammar": grammar,
+                "sources": sources,
+            })
+    if digits:
+        digit_sources = []
+        for index, (source, target) in enumerate(digits.items()):
+            flat[source] = target
+            digit_sources.append({"source": source, "aliases": [target], "position": index})
+        output_groups.append({
+            "id": "special.digits", "version": "1", "grammar": "special.digits",
+            "sources": digit_sources,
+        })
 
-    # keep the curated digit permutation as-is
-    for s, t in data.get("_digit_permutation", {}).items():
-        flat[s] = t
+    if a.legacy_flat:
+        Path(a.out).write_text(json.dumps(flat, ensure_ascii=False, indent=0) + "\n",
+                               encoding="utf-8")
+    else:
+        contract = {
+            "schema": "shieldfont.mapping.v2",
+            "profile": "versioned-groups",
+            "case": a.case,
+            "seed": {"id": f"reseed-{a.seed}", "value": a.seed},
+            "groups": output_groups,
+        }
+        if a.document_nonce is not None:
+            contract["nonce_meta"] = nonce_info(a.document_nonce)
+        try:
+            canonical = validate_contract(contract, compatibility=False)
+            materialised, _ = flatten_contract(canonical)
+        except MappingContractError as exc:
+            print(f"[FAIL] mapping contract {exc.code}: {exc}")
+            return 13
+        if materialised != flat:
+            raise SystemExit("mapping contract replay mismatch")
+        Path(a.out).write_text(json.dumps(contract, ensure_ascii=False, indent=0) + "\n",
+                               encoding="utf-8")
 
-    Path(a.out).write_text(json.dumps(flat, ensure_ascii=False, indent=0))
-    words = sum(1 for k in flat if k.isalpha())
-    involution = sum(1 for s, t in flat.items() if flat.get(t) == s)
-    print(f"[reseed] seed={a.seed} buckets={len(by_bucket)} words={words} "
-          f"digits={sum(1 for k in flat if k.isdigit())} unpaired_buckets={unpaired}")
+    words = sum(1 for key in flat if key.isalpha())
+    involution = sum(1 for source, target in flat.items() if flat.get(target) == source)
+    print(f"[reseed] schema={'compatibility' if a.legacy_flat else 'shieldfont.mapping.v2'} "
+          f"profile={'compatibility' if a.legacy_flat else 'versioned-groups'} "
+          f"groups={len(output_groups)} seed_id=reseed-{a.seed} "
+          f"nonce_source={'provided' if a.document_nonce else 'none'} "
+          f"nonce_digest_prefix={hashlib.sha256(a.document_nonce.encode()).hexdigest()[:12] if a.document_nonce else 'none'}")
+    print(f"[reseed] words={words} digits={sum(1 for k in flat if k.isdigit())} "
+          f"unpaired_groups={unpaired}")
     print(f"[reseed] involution={involution}/{len(flat)} ({100 * involution / len(flat):.1f}%)")
     print(f"[reseed] wrote {a.out} ({Path(a.out).stat().st_size:,} bytes)")
-    print("[reseed] NEXT: build a matching font — see docs/custom-mappings.md")
     return 0
 
 

@@ -1,0 +1,12 @@
+{
+  "fixture_id": "seedfont-task6-v1",
+  "required_source": ["ccmp", "locl"],
+  "required_restoration": "rlig",
+  "optional": ["calt", "dlig", "liga"],
+  "ordering": ["fire", "class-boundary", "restore"],
+  "caret_validation": {
+    "coordinate_format": 1,
+    "signed_range": [-32768, 32767],
+    "deduplicate": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "fixture_id": "seedfont-task2-v1",
+  "component_widths": [100, 80],
+  "component_bounds": [
+    {"x_min": 20, "x_max": 60},
+    {"x_min": 5, "x_max": 45}
+  ],
+  "composite": {
+    "advance": 180,
+    "x_min": 20,
+    "x_max": 145,
+    "nominal_lsb": 20,
+    "damaged_lsb": 0
+  }
+}

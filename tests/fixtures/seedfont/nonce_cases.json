@@ -1,0 +1,5 @@
+{
+  "fixture_id": "seedfont-task2-v1",
+  "valid": ["seedfont-task2-v1"],
+  "invalid": ["nonce with spaces", "../path-escape", ""]
+}

@@ -153,3 +153,6 @@ jobs:
       # string; no test we had could see inside one.
       - name: Smoke-test the scripts
         run: python3 scripts/smoke_test.py
+
+      - name: Script regression suite
+        run: npm run test:scripts

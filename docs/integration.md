@@ -304,6 +304,15 @@ defined as `encode`. Every word in the dictionary is therefore both an original
 and a decoy, and the font swaps it either way. Measured by shaping text through
 the shipped `optik-a.woff2` with HarfBuzz:
 
+The generated table has an explicit compatibility order: required `ccmp`
+(falling back to `locl` only when a base face lacks `ccmp`) fires the word
+lookup before base compatibility lookups; required `rlig` then performs the
+class/boundary fire-then-revert restoration; optional `calt`, `dlig`, and
+`liga` are not dependencies. Consequently disabling discretionary or
+contextual ligatures does not disable the generated rules, while disabling the
+required source feature intentionally disables them for clients that need
+plain text.
+
 | You write | A shielded face draws |
 |---|---|
 | `Read the docs` | composites built from the letters `Reset`, `sellers` |

@@ -136,7 +136,47 @@ python3 scripts/generate_font.py --base-path ./your-typeface.ttf \
   --mapping-path scripts/v18alpha_for_font.json
 ```
 
-Naming rules and how to audit the build: [`docs/custom-faces.md`](./docs/custom-faces.md).
+For a reproducible build, add `--deterministic --source-date-epoch 0`. A
+private document nonce may be supplied with `--document-nonce`; only a digest
+is recorded in diagnostics and bundle identity. `--tenant-id` and
+`--cache-key` are opaque inputs and are never logged raw. Use
+`--artifact-dir build-artifacts` to emit the canonical bundle:
+`mapping.json` (public), `font-web.woff2` (public), `mapping.audit.json` and
+`mapping.audit.csv` (private), `font-audit.ttf` (private), plus shaping,
+performance, security, and manifest verification files. Do not publish the
+private or verification files to the browser.
+
+Naming rules and the full flag/output reference:
+[`docs/custom-faces.md`](./docs/custom-faces.md).
+
+### Portable Windows CLI
+
+The repository also ships `dist\shieldfont-cli.exe`, a self-contained
+Windows x64 console utility. It bundles Python, fontTools, HarfBuzz,
+requests, Brotli, and all upstream scripts, so the target machine does not
+need Python, Node.js, or a ShieldFont checkout.
+
+Build or refresh it from the repository root:
+
+```powershell
+.\scripts\build-portable.ps1 -Clean
+.\dist\shieldfont-cli.exe --help
+```
+
+Use `-SkipInstall` when the current Python environment already has the
+versions from `requirements.txt` and PyInstaller 6.21.0. The build script
+supports `-OutputDir DIR`, `-Python PATH`, `-SkipInstall`, and `-Clean`.
+
+| Command | Purpose |
+|---|---|
+| `shieldfont-cli.exe generate_font ...` | Build a matching TTF, WOFF2, CSS, and mapping bundle from a TrueType source. |
+| `shieldfont-cli.exe reseed_mapping ...` | Create a deterministic grouped mapping contract or legacy flat mapping. |
+| `shieldfont-cli.exe audit_font ...` | Validate a generated TTF/mapping pair and optionally emit HTML, JSON, and canonical audit artifacts. |
+
+Every command forwards its complete upstream option set. Run
+`shieldfont-cli.exe <command> --help` for parameter descriptions and
+copy-paste examples. Defaults and generated paths resolve from the current
+working directory; the private runtime cache is `.shieldfont-cache\`.
 
 ### Bring your own key
 
@@ -146,7 +186,15 @@ Three dictionaries ship, each with its own key. Private keys are harder for scra
 python3 scripts/reseed_mapping.py --seed <n> --out mine/mapping.json
 ```
 
-Details: [`docs/custom-mappings.md`](./docs/custom-mappings.md).
+The default output is the versioned `shieldfont.mapping.v2` grouped contract,
+with deterministic alias selection. Pass `--legacy-flat` when an older
+encoder or build requires the historical flat involution. A
+`--document-nonce` selects document-specific aliases; keep the nonce private
+and retain it outside the published bundle. Only its digest prefix may appear
+in safe metadata.
+
+Details, including the public/private artifact boundary:
+[`docs/custom-mappings.md`](./docs/custom-mappings.md).
 
 <br />
 

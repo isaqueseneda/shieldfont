@@ -30,6 +30,21 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+from script_diagnostics import (  # noqa: E402
+    CODE_BACKEND_MISSING,
+    CODE_INPUT_NOT_FOUND,
+    CODE_OUTPUT_UNWRITABLE,
+    CODE_VALIDATION_FAILED,
+    Diagnostics,
+    EXIT_INPUT,
+    EXIT_OUTPUT,
+    EXIT_VALIDATION,
+    add_json_result_argument,
+)
+from artifact_contract import deterministic_font_metadata, source_date_epoch  # noqa: E402
+
 
 def set_name(font: TTFont, name_id: int, value: str) -> None:
     name = font["name"]
@@ -96,7 +111,15 @@ def main() -> int:
     ap.add_argument("--no-shape", action="store_true",
                     help="skip the (slow) harfbuzz render-equivalence check; keep the cheap packer/glyph/name checks")
     ap.add_argument("--shape-word", default="analyze", help="an ENCODED word expected to fire a ligature")
+    ap.add_argument("--source-date-epoch", type=int,
+                    help="Controlled timestamp for reproducible font metadata")
+    add_json_result_argument(ap)
     a = ap.parse_args()
+    diag = Diagnostics(__file__, a.json_out)
+    try:
+        controlled_epoch = source_date_epoch(a.source_date_epoch)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     infile = Path(a.infile)
     if a.inplace:
@@ -106,7 +129,23 @@ def main() -> int:
     else:
         out = infile.with_suffix(".stamped" + infile.suffix)
 
-    src = TTFont(str(infile))
+    if not infile.exists():
+        if diag.json_out is not None:
+            diag.fail("input not found", stage="input", code=CODE_INPUT_NOT_FOUND,
+                      exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code=CODE_INPUT_NOT_FOUND)
+        print(f"[FAIL] input not found: {infile}")
+        return 1
+
+    try:
+        src = TTFont(str(infile))
+    except Exception as exc:
+        if diag.json_out is not None:
+            diag.fail("could not read input font", stage="input",
+                      code="input_invalid", exit_code=EXIT_INPUT)
+            return diag.finish(EXIT_INPUT, stage="input", code="input_invalid")
+        print(f"[FAIL] could not read input font: {type(exc).__name__}: {exc}")
+        return 1
     glyphs_before = src["maxp"].numGlyphs
     lookups_before = len(src["GSUB"].table.LookupList.Lookup) if "GSUB" in src else 0
 
@@ -128,6 +167,7 @@ def main() -> int:
     if a.description:
         set_name(src, 10, a.description)
     src["head"].fontRevision = float(f"{mm[0]}.{mm[1]}") if len(mm) >= 2 else float(mm[0])
+    deterministic_font_metadata(src, controlled_epoch)
 
     tmp = Path(str(out) + ".tmp")
     try:
@@ -136,9 +176,24 @@ def main() -> int:
         print(f"[FAIL] save/pack error: {type(e).__name__}: {e}")
         if tmp.exists():
             tmp.unlink()
+        if diag.json_out is not None:
+            diag.fail("save/pack failed", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
         return 1
 
-    chk = TTFont(str(tmp))
+    try:
+        chk = TTFont(str(tmp))
+    except Exception as exc:
+        if tmp.exists():
+            tmp.unlink()
+        if diag.json_out is not None:
+            diag.fail("could not validate output font", stage="validation",
+                      code=CODE_VALIDATION_FAILED, exit_code=EXIT_VALIDATION)
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
+        print(f"[FAIL] could not validate output font: {type(exc).__name__}: {exc}")
+        return 1
     ok = True
     if chk["maxp"].numGlyphs != glyphs_before:
         print(f"[FAIL] glyph count changed {glyphs_before} -> {chk['maxp'].numGlyphs}"); ok = False
@@ -152,6 +207,11 @@ def main() -> int:
 
     shape = "skip" if a.no_shape else shape_equiv(
         infile, tmp, ["analyze", "office", "determines", "publish", "the", "shield", "january", "x"])
+    if shape == "skip" and not a.no_shape:
+        print("[WARN] HarfBuzz backend unavailable; render-equivalence check skipped")
+        if diag.json_out is not None:
+            diag.warn("render-equivalence check skipped", stage="backend",
+                      code=CODE_BACKEND_MISSING, details={"backend": "uharfbuzz"})
     if shape == "DIFFER":
         print("[FAIL] rendering changed: glyph sequence differs (orig vs stamped)"); ok = False
 
@@ -161,16 +221,35 @@ def main() -> int:
         ots = "pass" if r.returncode == 0 else "FAIL"
         if r.returncode != 0:
             print(f"[FAIL] ots-sanitize: {r.stderr.strip()[:200]}"); ok = False
+    elif diag.json_out is not None:
+        diag.warn("ots-sanitize unavailable; sanitizer check skipped", stage="backend",
+                  code=CODE_BACKEND_MISSING, details={"backend": "ots-sanitize"})
 
     if not ok:
         tmp.unlink()
         print("[ABORT] validation failed — destination NOT written")
+        if diag.json_out is not None:
+            diag.fail("validation failed", stage="validation",
+                      code=CODE_VALIDATION_FAILED, exit_code=EXIT_VALIDATION)
+            return diag.finish(EXIT_VALIDATION, stage="validation",
+                               code=CODE_VALIDATION_FAILED)
         return 1
 
-    tmp.replace(out)
+    try:
+        tmp.replace(out)
+    except OSError as exc:
+        print(f"[FAIL] could not write destination: {type(exc).__name__}: {exc}")
+        if tmp.exists():
+            tmp.unlink()
+        if diag.json_out is not None:
+            diag.fail("could not write destination", stage="output",
+                      code=CODE_OUTPUT_UNWRITABLE, exit_code=EXIT_OUTPUT)
+            return diag.finish(EXIT_OUTPUT, stage="output", code=CODE_OUTPUT_UNWRITABLE)
+        return 1
     print(f"[PASS] {out.name}: glyphs={glyphs_before} lookups={lookups_before} "
           f"nameID5={read_name(chk,5)!r} nameID3={read_name(chk,3)!r} shape={shape} ots={ots}")
-    return 0
+    return diag.finish(0, stage="complete",
+                       details={"status": "written"}) if diag.json_out is not None else 0
 
 
 if __name__ == "__main__":
