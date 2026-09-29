@@ -44,6 +44,7 @@ import zipfile
 import io
 import hashlib
 import requests
+import unicodedata
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -422,9 +423,22 @@ def build_gsub_word_boundary_ligatures(font, ligature_map, single_subst_map=None
 
     # LETTER = alphabetic only (no apostrophe; quoted shorts like 'on' need it
     # to be non-letter so chain backtrack/lookahead matches it as a boundary).
+    #
+    # str.isalpha() alone is not enough: it also returns True for Unicode
+    # category Lm ("letter, modifier" -- e.g. U+02BC MODIFIER LETTER
+    # APOSTROPHE), and fonts commonly map an Lm apostrophe look-alike to the
+    # SAME glyph as the ordinary punctuation apostrophe it's a lookalike for
+    # (Inter maps both U+2019 RIGHT SINGLE QUOTATION MARK -- the "smart quote"
+    # apostrophe any CMS/editor inserts in a possessive -- and U+02BC to one
+    # "quoteright" glyph). Without this exclusion that shared glyph gets
+    # marked a "letter", so the fire-then-revert boundary check wrongly sees
+    # a letter neighbor after any shielded word immediately followed by a
+    # normal possessive apostrophe ("parliament's") and reverts a ligature
+    # that should have stayed substituted -- leaking the raw decoy word.
     letter_glyphs = set()
     for cp, gname in cmap.items():
-        if chr(cp).isalpha():
+        ch = chr(cp)
+        if ch.isalpha() and unicodedata.category(ch) != "Lm":
             letter_glyphs.add(gname)
     letter_glyphs &= glyph_set
     letter_list = sorted(letter_glyphs)
