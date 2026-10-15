@@ -64,6 +64,29 @@ The SIL Open Font License (LICENSE-FONTS) applies only to variants you build
 yourself from an OFL base font (e.g. Inter) via scripts/generate_font.py.
 
 --------------------------------------------------------------------------
+Data used to build language mappings
+--------------------------------------------------------------------------
+
+Each language's sources are listed, with what they are used for and whether
+a maintainer has approved their licence, in languages/<code>/language.json.
+
+- Grammalecte, "Lexique des formes fléchies du français", v7.7
+  (Olivier R., https://grammalecte.net/) — Mozilla Public License 2.0.
+
+  Read by languages/fr/build/build_pairs.py for French word forms, part of
+  speech, gender, number, verb inflection, elision markers and the corpus
+  counts behind its frequency floor. It is downloaded on demand and cached
+  in languages/fr/build/.cache/ (gitignored); it is NOT redistributed by
+  this project. What this repository commits is the derived mapping, a set
+  of seeded random word pairs, and the pipeline that produces it.
+
+- spaCy fr_core_news_md (Explosion) — LGPL-LR. Its word vectors are used by
+  the same script to cluster words and to reject near-synonym pairs; no
+  word or feature in the pairs is taken from it. Whether that use needs a
+  differently licensed vector source is open; language.json records it as
+  not yet approved.
+
+--------------------------------------------------------------------------
 Supporters
 --------------------------------------------------------------------------
 
@@ -79,3 +102,10 @@ The generator (scripts/generate_font.py) uses:
   - fontTools (MIT) — https://github.com/fonttools/fonttools
   - brotli (MIT)     — https://github.com/google/brotli
   - requests (Apache-2.0) — https://requests.readthedocs.io
+
+The French mapping builder (languages/fr/build/build_pairs.py) additionally
+uses, and is the only thing that needs it, so it stays out of
+requirements.txt:
+
+  - spaCy (MIT) — https://spacy.io (the fr_core_news_md model it loads is
+    LGPL-LR; see above)

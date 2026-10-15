@@ -1,0 +1,40 @@
+{
+  "code": "fr",
+  "name": "French",
+  "status": "building",
+  "contributors": ["@DebojyotiMishra"],
+  "build": "build/build_pairs.py",
+  "mappings": [
+    {
+      "id": "fr-v1-alpha",
+      "logical_pairs": 6441,
+      "entries": 12882,
+      "seed": 42,
+      "pairs_file": "data/pairs_fr_v1_alpha.json",
+      "font_input": "data/fr_v1_alpha_for_font.json"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "Grammalecte lexicon v7.7 (Lexique des formes fléchies du français)",
+      "used_for": "word forms, lemma, part of speech, gender, number, verb mood and person, elision markers, and the per-corpus counts behind the frequency floor",
+      "license": "MPL-2.0",
+      "url": "https://grammalecte.net/",
+      "license_approved": false
+    },
+    {
+      "name": "spaCy fr_core_news_md",
+      "used_for": "word vectors for k-means clustering inside a bucket and for the semantic veto (near-synonym rejection); no word or feature in the pairs comes from it",
+      "license": "LGPL-LR",
+      "url": "https://huggingface.co/spacy/fr_core_news_md",
+      "license_approved": false
+    }
+  ],
+  "numbers": {
+    "words_changed_share": null,
+    "meaning_divergence": null,
+    "filter_retention": null
+  },
+  "review": { "rows": 6441, "rows_checked": 0 },
+  "font": null
+}

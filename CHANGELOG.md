@@ -12,6 +12,52 @@ now — accessibility in particular — read the
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A French mapping, `fr-v1-alpha`, and the pipeline that builds it**, in
+  `languages/fr/` with status `building`.
+  `languages/fr/build/build_pairs.py` produces 6,441 logical pairs (12,882
+  entries) from Grammalecte's lexicon (MPL 2.0) at seed 42, with the pairs,
+  the flat word list and a per-pair review sheet beside it. The pairs are
+  in the shared schema and pass `scripts/check_pairs.py`.
+
+  French needed its own pipeline rather than the language-code swap
+  `ROADMAP.md` describes, because a decoy has to agree in **gender** and
+  preserve **elision class**: `la maison` → `la livre` and `l'arbre` →
+  `l'maison` are ungrammatical, and ungrammatical text is filtered as noise
+  instead of read as prose, which is the whole mechanism. Both are bucket
+  dimensions; neither exists in English.
+
+  Elision is decided by a hand list (`NO_ELISION`, propagated to inflected
+  forms by lemma) checked against the lexicon's own `pel`/`hm` markers on
+  every build; a form the two disagree on is left out. `ELISION_CONTROLS`
+  pins 29 known-answer cases, because a wrong elision class yields a mapping
+  that is internally consistent and merely ungrammatical on the page.
+
+  A first draft was built from Lexique 3.83, which is CC BY-SA 4.0 and so
+  does not fit a single AGPL-3.0 licence for the repository. The rebuild on
+  Grammalecte drops every form that is more than one part of speech, since
+  this lexicon cannot say which reading is the usual one; see
+  `languages/fr/README.md` for what that cost.
+
+- **`languages/fr/tests/encode-fr.test.ts`** — 16 tests over the French
+  word list: involution, NFC, no apostrophe or single-letter keys, the
+  elision invariant across every pair, French round-trip, `aujourd'hui`
+  passing through unencoded, entity safety and the digit rule.
+
+### Notes
+
+**Nothing French ships in this release.** There is no French font — the
+Optik base needed to build one is Playtype's — so the mapping is not wired
+into `@shieldfont/core`, and a mapping without its font renders as visible
+decoy text. No native speaker has audited the pairs, and none of the NLI,
+KenLM or FineWeb-Edu benchmarks have been re-run for French, so no published
+number in this repository describes the French mapping.
+
+---
+
 ## [0.3.5] — 2026-08-16
 
 A documentation and wording release, plus one behavioural fix each for readers
