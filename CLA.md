@@ -136,3 +136,4 @@ indicates agreement to the terms above.
 | Isaque Seneda | @isaqueseneda | 2026-04-15 |
 | Gabriel Abrucio | @gabrucio | 2026-04-15 |
 | Kris Crawford | @kristophercrawford | 2026-07-31 |
+| Alex Desplanque | @Huck-dev | 2026-10-30 |
