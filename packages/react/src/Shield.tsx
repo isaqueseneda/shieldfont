@@ -7,8 +7,6 @@ import * as React from "react";
 import { solverScript } from "./solver.js";
 import {
   altCss,
-  DEFAULT_NOSCRIPT,
-  DEFAULT_TEXT,
   ICONS,
   clipboardNotice,
   copyGuardScript,
@@ -19,6 +17,13 @@ import {
   standaloneClipboardNotice,
   type ShieldNotice,
 } from "./notice.js";
+import {
+  fill,
+  isDefaultStrings,
+  resolveStrings,
+  type ShieldLocale,
+  type ShieldStrings,
+} from "./locales.js";
 import {
   isValidElement,
   type CSSProperties,
@@ -529,6 +534,25 @@ export interface ShieldProps {
   copyPaste?: boolean | { notice?: string };
 
   /**
+   * The language of everything this block says to a reader: the wrapper's
+   * sentence and buttons, the live-region announcements, the wait estimate,
+   * the toasts, the clipboard notice, and the clipped tier's control and
+   * status lines. Default `"en"`.
+   *
+   * Ships `"en"`, `"fr"`, `"es"`, `"pt"` (Brazilian) and `"de"`. For any other
+   * language pass a complete {@link ShieldStrings} table; `SHIELD_LOCALES.en`
+   * is the one to copy. Anything set through `wrapper={{ text, labels }}`,
+   * `copyPaste={{ notice }}` or `a11y` still wins over the locale.
+   *
+   * It does not change the ENCODING. The mappings are English, and text in
+   * another language passes through them mostly unchanged; see
+   * `languages/README.md` for where other languages' word pairs stand. This
+   * prop is for the reader-facing furniture, which a French page needs in
+   * French whichever words end up protected.
+   */
+  locale?: ShieldLocale | ShieldStrings;
+
+  /**
    * The content to encode. MUST be a plain string.
    *
    * Anything else throws. Nested JSX is rejected rather than walked, because
@@ -551,7 +575,7 @@ export interface ShieldProps {
 const SHIELD_PROPS = new Set([
   "as", "variant", "weight", "italic", "lineHeight", "size",
   "className", "style", "rotate", "a11y",
-  "screenReader", "wrapper", "copyPaste", "children",
+  "screenReader", "wrapper", "copyPaste", "locale", "children",
 ]);
 
 /**
@@ -2056,7 +2080,7 @@ const VISUALLY_HIDDEN: CSSProperties = {
  * that a paragraph is missing and that there is a way to get it. Tested by ear:
  * the long version was heard as noise to skip past.
  */
-const A11Y_NOTE = DEFAULT_TEXT;
+const A11Y_NOTE = "text" satisfies keyof ShieldStrings;
 
 /**
  * The note every text-mode block after the FIRST one on a page gets.
@@ -2070,7 +2094,7 @@ const A11Y_NOTE = DEFAULT_TEXT;
  * Falls back to the long form outside a render-pass scope, since without one
  * there is no way to know whether this block is the first.
  */
-const A11Y_NOTE_REPEAT = "Scrambled text. Uncover the original below.";
+const A11Y_NOTE_REPEAT = "repeat" satisfies keyof ShieldStrings;
 
 /**
  * Tags for which `<Shield>` renders an INLINE alternative wrapper. A `<div>` or
@@ -2140,6 +2164,7 @@ function renderA11y(
   blockId: string,
   tag: string | null,
   ordinal: number,
+  s: ShieldStrings,
 ): ReactNode {
   // Both branches are now an explicit opt-out: `undefined` only reaches here
   // when screenReader was set false, because otherwise the caller substitutes
@@ -2165,7 +2190,7 @@ function renderA11y(
   // The same sentence the drawn tier swaps in, deliberately word-for-word: a
   // reader who meets both tiers on one site should not be told the same fact
   // two ways.
-  const openNote = "You are now reading the original text.";
+  const openNote = s.open;
   // This function only runs where the drawn wrapper is off, and there
   // `visualHidden` defaults to true: the whole control is clipped off-screen.
   //
@@ -2184,17 +2209,23 @@ function renderA11y(
   // The long note is spent once per render pass; every block after the first
   // gets the short form. See {@link A11Y_NOTE_REPEAT} for why.
   const firstOfPage = claim("notes", "long");
-  const note = a11y.note ?? (firstOfPage ? A11Y_NOTE : A11Y_NOTE_REPEAT);
+  const note = a11y.note ?? s[firstOfPage ? A11Y_NOTE : A11Y_NOTE_REPEAT];
   // NOT shortened on later blocks the way `note` is. The short form is a
   // reminder of something already said; this is the only statement of a fact
   // that has not been said at all, and a reader may well meet block four first.
   // `??`, so `noScript: ""` is an author switching it off.
-  const noScript = a11y.noScript ?? DEFAULT_NOSCRIPT;
+  const noScript = a11y.noScript ?? s.noScript;
 
   // Bare data attributes as hooks for the solver script. Names derive from the
   // camouflage attr, so a project that called setCamouflage({ hash }) has no
   // shared signature with any other project here either.
-  const groupMark = { [`${attr}-group`]: "" } as Record<string, string>;
+  const groupMark = {
+    [`${attr}-group`]: "",
+    // The solver's status lines, for a block not in English. Absent otherwise,
+    // and the solver falls back to its own English, so an English block's
+    // markup is exactly what it was before `locale` existed.
+    ...(isDefaultStrings(s) ? {} : { [`${attr}-says`]: solverSays(s) }),
+  } as Record<string, string>;
 
   // NO `role="group"` and no `aria-label` on this wrapper. Both were here to
   // "associate" the note with the button, and measured against real VoiceOver
@@ -2285,6 +2316,7 @@ function renderA11y(
         a11y.reveal ?? "hidden",
         a11y.label,
         ordinal,
+        s,
       )}
     </Wrap>
   );
@@ -2325,9 +2357,9 @@ function renderA11y(
  * that a future field carrying freer text cannot silently turn into an HTML
  * injection.
  */
-const TAG_NOUN: Record<string, string> = {
+const TAG_NOUN: Record<string, keyof ShieldStrings["nouns"]> = {
   h1: "heading", h2: "heading", h3: "heading", h4: "heading", h5: "heading", h6: "heading",
-  p: "paragraph", blockquote: "quote", li: "list item", figcaption: "caption",
+  p: "paragraph", blockquote: "quote", li: "listItem", figcaption: "caption",
 };
 
 /**
@@ -2346,17 +2378,47 @@ const TAG_NOUN: Record<string, string> = {
  * the text would hand it to any scraper for free — the exact bypass the whole
  * mode exists to close.
  */
-/** The word a reader hears for this element. Also the ordinal's counter key. */
-function nounFor(tag: string | null): string {
-  return (tag && TAG_NOUN[tag]) ?? "section";
+/**
+ * Which word a reader hears for this element, as a key into
+ * `ShieldStrings.nouns`. Also the ordinal's counter key, which is why it is the
+ * key and not the translated word: the count must not depend on the language.
+ */
+function nounFor(tag: string | null): keyof ShieldStrings["nouns"] {
+  return (tag ? TAG_NOUN[tag] : undefined) ?? "section";
 }
 
-function puzzleLabel(_tag: string | null, _ordinal: number, seconds: number): string {
+/**
+ * The `-says` JSON the clipped tier's solver reads, from the same table.
+ * Built here beside the drawn tier's, so the two cannot drift into saying the
+ * same thing in two languages.
+ */
+function solverSays(s: ShieldStrings): string {
+  return JSON.stringify({
+    ready: s.ready,
+    doneShown: s.doneShown,
+    done: s.done,
+    insecure: s.insecureShort,
+    incapable: s.incapable,
+    pct: s.pct,
+    fail: s.fail,
+    again: s.tryAgain,
+    working: s.working,
+    keep: s.keep,
+    ...durationSays(s),
+  });
+}
+
+/** The wait-estimate templates both scripts' `human()` reads. */
+function durationSays(s: ShieldStrings): { sec: string; min1: string; min: string } {
+  return { sec: s.seconds, min1: s.minute, min: s.minutes };
+}
+
+function puzzleLabel(_tag: string | null, _ordinal: number, seconds: number, s: ShieldStrings): string {
   // NO ORDINAL. It used to say "for paragraph 2", which was right when every
   // block had its own control and a reader had to tell them apart by ear. The
   // control is page-wide now — one press uncovers every protected block — so
   // naming one paragraph would describe a scope the button does not have.
-  return `Uncover the original text (up to ${seconds} seconds)`;
+  return fill(s.puzzle, { n: seconds });
 }
 
 /**
@@ -2609,7 +2671,7 @@ function ActionButton({
  * sentence's height in every state, and pressing the button cannot move the
  * page under the reader.
  */
-function LoadingRow({ attr, lead }: { attr: string; lead: boolean }) {
+function LoadingRow({ attr, lead, text }: { attr: string; lead: boolean; text: string }) {
   return (
     <span
       hidden
@@ -2631,7 +2693,7 @@ function LoadingRow({ attr, lead }: { attr: string; lead: boolean }) {
         names the clipped tier's bar, which is not aria-hidden.
       */}
       <progress max={100} value={0} aria-hidden="true" />
-      <span {...({ [`${attr}-est`]: "" } as Record<string, string>)}>Loading text…</span>
+      <span {...({ [`${attr}-est`]: "" } as Record<string, string>)}>{text}</span>
     </span>
   );
 }
@@ -2680,6 +2742,7 @@ function NoticeStrip({
   notice,
   ordinal,
   noun,
+  strings,
 }: {
   where: "top" | "bottom";
   /** True only for the lead strip of the FIRST notice on the page. */
@@ -2688,6 +2751,7 @@ function NoticeStrip({
   notice: ReturnType<typeof resolveNotice>;
   ordinal: number;
   noun: string;
+  strings: ShieldStrings;
 }) {
   /** The strip that owns the explanation. The other one is furniture. */
   const lead = where === "top";
@@ -2743,11 +2807,11 @@ function NoticeStrip({
       : label === notice.labels.show
         ? spokenShow
         : label;
-  const openSay = "You are now reading the original text.";
+  const openSay = strings.open;
   // The chip's first words, before the device has been measured. Same string
   // the script writes once it has a number, so the wording never changes under
   // the reader mid-wait — only a duration is appended.
-  const cfgMeasuring = "Loading text…";
+  const cfgMeasuring = strings.loading;
   const strip = {
     [`${attr}-strip`]: where,
     // THE FULL SENTENCE ONCE PER PAGE, A SHORT ONE AFTER.
@@ -2901,9 +2965,9 @@ function NoticeStrip({
           toast is: the sentence keeps its height while the bar covers it, so
           pressing the button cannot move the row under the reader's cursor.
         */}
-        <LoadingRow attr={attr} lead={lead} />
+        <LoadingRow attr={attr} lead={lead} text={strings.loading} />
         <span aria-hidden="true" {...({ [`${attr}-toast`]: "" } as Record<string, string>)}>
-          Copied to clipboard
+          {strings.toastCopied}
         </span>
       </span>
       <span {...({ [`${attr}-acts`]: "" } as Record<string, string>)}>
@@ -2932,7 +2996,7 @@ function NoticeStrip({
             // not. The live region still reports the measured estimate on every
             // block — this is only the warning before it.
             firstOnPage
-              ? `${named(notice.labels.show)}, takes a few seconds`
+              ? fill(strings.slow, { name: named(notice.labels.show) })
               : named(notice.labels.show)
           }
         />
@@ -2951,6 +3015,7 @@ function renderPuzzle(
   reveal: "hidden" | "visible",
   label: string | undefined,
   ordinal: number,
+  s: ShieldStrings,
 ): ReactNode {
   const attr = camo.attrName;
   const solveAttr = `${attr}-solve`;
@@ -3011,8 +3076,8 @@ function renderPuzzle(
           hidden
           off
           icon={ICONS.eye}
-          label={label ?? "Uncover"}
-          name={label ?? puzzleLabel(tag, ordinal, target)}
+          label={label ?? s.show}
+          name={label ?? puzzleLabel(tag, ordinal, target, s)}
           extra={buttonMark}
         />
       </span>
@@ -3148,12 +3213,16 @@ export function Shield(props: ShieldProps) {
     screenReader,
     wrapper,
     copyPaste,
+    locale,
     children,
   } = props;
 
   // Fail loud in dev if this server component is being rendered on the client
   // (a "use client" boundary or a client-only React app ships the plaintext).
   warnIfClientRender();
+  // Before anything reads a string, so an unknown locale throws ahead of any
+  // output rather than after half a block has been built in English.
+  const strings = resolveStrings(locale);
 
   // A RENAMED PROP IS A DEAD PROP HERE, not a silent alias. Checked BEFORE the
   // generic unknown-prop throw below, which would otherwise catch these and
@@ -3440,7 +3509,7 @@ export function Shield(props: ShieldProps) {
   const wantsNotice =
     !inlineTag && wrapperProp !== undefined && wrapperProp !== false && usesPuzzle;
   const cfg = wantsNotice
-    ? resolveNotice(wrapperProp === true ? {} : (wrapperProp as ShieldNotice))
+    ? resolveNotice(wrapperProp === true ? {} : (wrapperProp as ShieldNotice), strings)
     : null;
   // COPY MEDIATION IS INDEPENDENT OF THE WRAPPER, and defaults on wherever
   // there is a seal. It used to follow the wrapper — `: wantsNotice` — which
@@ -3516,8 +3585,8 @@ export function Shield(props: ShieldProps) {
     typeof copyPaste === "object" && copyPaste?.notice
       ? copyPaste.notice
       : cfg
-        ? clipboardNotice(cfg.labels.show)
-        : standaloneClipboardNotice();
+        ? clipboardNotice(cfg.labels.show, strings)
+        : standaloneClipboardNotice(strings);
   // Copy mediation on the tier with no frame to hang it off. `copyOn` alone is
   // not enough: inside a wrapper the notice script already owns the listener,
   // and two handlers on one selection would fight over the same clipboard.
@@ -3539,6 +3608,7 @@ export function Shield(props: ShieldProps) {
         blockId,
         typeof Tag === "string" ? Tag : null,
         ordinal,
+        strings,
       );
 
   // Claim this page's font assets. Inside a render pass scope the first
@@ -3679,7 +3749,7 @@ export function Shield(props: ShieldProps) {
       // block's furniture from the next block's. Authors who want a name can
       // set labels.group, and labels.groupOpen if it should change on open.
       ...(cfg.labels.group
-        ? { "aria-label": groupName(cfg.labels.group, noun, ordinal) }
+        ? { "aria-label": groupName(cfg.labels.group, strings.nouns[noun], ordinal, strings) }
         : {}),
       [`${attr}-guard`]: copyOn && cfg.copyGuard ? "1" : "0",
       ...(copyOn ? { [`${attr}-clip`]: copyNoticeText } : {}),
@@ -3691,16 +3761,16 @@ export function Shield(props: ShieldProps) {
       // setCamouflage() untouched — the same rule solver.ts and the font guard
       // already follow, and the reason they carry no comments either.
       [`${attr}-says`]: JSON.stringify({
-        working: "Loading text…",
-        keep: "You can keep reading.",
-        pct: "percent.",
+        working: strings.loading,
+        keep: strings.keep,
+        pct: strings.pct,
         // Arrives AFTER the words, not before them. The script moves focus to
         // the revealed text first and lets this land ~300 ms later, because a
         // focus move cancels speech in flight on every screen reader that has
         // a virtual buffer — so the old order (announce, then focus) delivered
         // this sentence to nobody. Reading as a confirmation-plus-next-step
         // rather than an introduction is what that ordering asks of it.
-        done: "You are now reading the original text.",
+        done: strings.open,
         // THE FRAME'S NAME, IN BOTH STATES, so the script can repaint it.
         //
         // It could not before, and the result was the sharpest thing anyone has
@@ -3718,26 +3788,32 @@ export function Shield(props: ShieldProps) {
         // paint() runs before land(), so the new name is in place first.
         // Only present when the author asked for a name; the script leaves the
         // frame alone when they are absent.
-        ...(cfg.labels.group ? { group: groupName(cfg.labels.group, noun, ordinal) } : {}),
-        ...(cfg.labels.groupOpen
-          ? { groupOpen: groupName(cfg.labels.groupOpen, noun, ordinal) }
+        ...(cfg.labels.group
+          ? { group: groupName(cfg.labels.group, strings.nouns[noun], ordinal, strings) }
           : {}),
-        err: "Something went wrong. You can try again.",
-        copied: "The original is on your clipboard.",
+        ...(cfg.labels.groupOpen
+          ? { groupOpen: groupName(cfg.labels.groupOpen, strings.nouns[noun], ordinal, strings) }
+          : {}),
+        err: `${strings.fail} ${strings.tryAgain}`,
+        copied: strings.copied,
         // The two toast lines. Same slot, opposite outcomes — green when the
         // clipboard got the real words, red when it got a notice instead,
         // because a paste that silently contains the wrong text is the failure
         // this whole guard exists to make visible.
-        toastCopied: "Copied to clipboard",
-        toastBlocked: "Copy blocked — uncover the text first",
-        copyFail: "Copying didn’t work. Press Copy again.",
-        clipped: `Copied a notice instead. Press “${cfg.labels.show}” to get the real words.`,
+        toastCopied: strings.toastCopied,
+        toastBlocked: strings.toastBlocked,
+        copyFail: strings.copyFail,
+        clipped: fill(strings.clipped, { show: cfg.labels.show }),
         // No `restored` and no `copiedShort`. The Restore button was removed
         // (see NoticeStrip) and nothing announces a short copy, so both were
         // strings shipped in the -says JSON on every block for a script that
         // never looks them up.
-        insecure: "Showing the original needs a secure (https) connection.",
-        incapable: "This browser can’t show the full text.",
+        insecure: strings.insecure,
+        incapable: strings.incapable,
+        // The wait estimate, which the script otherwise words in English.
+        // Only for a block not in English, for the same reason as the
+        // clipped tier's `-says`: an English block's markup stays as it was.
+        ...(isDefaultStrings(strings) ? {} : durationSays(strings)),
       }),
     } as Record<string, string>;
 
@@ -3788,6 +3864,7 @@ export function Shield(props: ShieldProps) {
             notice={cfg}
             ordinal={ordinal}
             noun={noun}
+            strings={strings}
           />
           {/*
             The protected block. Still aria-hidden — a decoy read aloud is worse
@@ -3858,6 +3935,7 @@ export function Shield(props: ShieldProps) {
               notice={cfg}
               ordinal={ordinal}
               noun={noun}
+              strings={strings}
             />
           ) : null}
         </div>

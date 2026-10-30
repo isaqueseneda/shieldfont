@@ -12,6 +12,24 @@ now — accessibility in particular — read the
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A `locale` prop on `<Shield>`.** Everything a block says to a reader now
+  comes from one table: the wrapper's sentence and buttons, the live-region
+  announcements, the wait estimate the browser words ("about 10 seconds"), the
+  toasts, the clipboard notice, and the clipped tier's control and status
+  lines. Before, `wrapper={{ text, labels }}` could translate the sentence and
+  the buttons, and everything around them stayed in English with no prop to
+  change it. Ships English, French, Spanish, Brazilian Portuguese and German;
+  any other language takes a full table (`SHIELD_LOCALES` and the
+  `ShieldStrings` type are exported). Explicit `wrapper`, `copyPaste` and
+  `a11y` wording still wins. The encoding is unchanged and still English.
+  An English block's markup is unchanged; the emitted scripts read their
+  strings from the block when a locale sends them and keep their English
+  otherwise.
+
 ## [0.3.5] — 2026-08-16
 
 A documentation and wording release, plus one behavioural fix each for readers

@@ -31,7 +31,12 @@
  *   on insecure origins (plain http, not localhost), which is a real deployment
  *   mistake rather than an old browser, so the two get different messages.
  * - `human()` rounds the estimate to something a person would say. Precision
- *   would be false comfort: the number comes from a 75 ms sample.
+ *   would be false comfort: the number comes from a 75 ms sample. Its wording
+ *   comes from the block's `-says` when a `locale` put one there.
+ * - `say()` looks a status line up in that same `-says` JSON, written by React
+ *   on the block's group, and falls back to the English beside it. An English
+ *   block carries no `-says` at all, so its markup is what it always was, and
+ *   the script stays one string for every page in every language.
  * - The calibration squarings inside the worker are real work toward the
  *   answer, so the main loop resumes from where they stopped rather than
  *   restarting from 2. Calibration is free, not overhead.
@@ -281,11 +286,15 @@ function hide(el){ if (el) { el.hidden = true; el.style.setProperty('display', '
 function text(el, s){ if (el) el.textContent = s; }
 function plural(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
 function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
-function human(seconds){
-  if (seconds < 45) return 'about ' + plural(Math.max(5, Math.round(seconds / 5) * 5), 'second', 'seconds');
+function human(seconds, t){
+  t = t || {};
+  if (seconds < 45){
+    var n = Math.max(5, Math.round(seconds / 5) * 5);
+    return t.sec ? t.sec.replace('{n}', n) : 'about ' + plural(n, 'second', 'seconds');
+  }
   var mins = seconds / 60;
-  if (mins < 1.5) return 'about a minute';
-  return 'about ' + plural(Math.round(mins), 'minute', 'minutes');
+  if (mins < 1.5) return t.min1 || 'about a minute';
+  return t.min ? t.min.replace('{n}', Math.round(mins)) : 'about ' + plural(Math.round(mins), 'minute', 'minutes');
 }
 function open(hex, data, hexLen){
   var canon = hex.length >= hexLen ? hex : new Array(hexLen - hex.length + 1).join('0') + hex;
@@ -311,6 +320,9 @@ function wire(btn){
   var holder = wrap.querySelector('[' + ATTR + '-data]');
   if (!status || !out || !holder) return;
   btn.setAttribute(SOLVE + '-wired', '1');
+  var says = {};
+  try { says = JSON.parse(wrap.getAttribute(ATTR + '-says') || '{}') || {}; } catch (e) {}
+  function say(k, en){ return says[k] || en; }
   function targetBlock(){ return document.getElementById(btn.getAttribute(SOLVE + '-for')); }
   var data = null;
   try {
@@ -326,7 +338,8 @@ function wire(btn){
     if (onScreen) hide(targetBlock());
     hide(btn);
     hide(bar);
-    text(status, cached ? 'The text is ready.' : (onScreen ? 'Done. The text is shown below.' : 'Done.'));
+    text(status, cached ? say('ready', 'The text is ready.')
+      : (onScreen ? say('doneShown', 'Done. The text is shown below.') : say('done', 'Done.')));
     var note = wrap.querySelector('[' + ATTR + '-open-note]');
     if (note){
       var opened = note.getAttribute(ATTR + '-open-note');
@@ -339,8 +352,8 @@ function wire(btn){
   }
   if (!CAPABLE) {
     text(status, window.isSecureContext === false
-      ? 'This needs a secure (https) connection.'
-      : 'This browser can’t show the full text.');
+      ? say('insecure', 'This needs a secure (https) connection.')
+      : say('incapable', 'This browser can’t show the full text.'));
     return;
   }
   show(btn);
@@ -387,7 +400,7 @@ function wire(btn){
     function progress(p){
       if (bar) bar.value = Math.round(p * 100);
       while (spoken < marks.length && p >= marks[spoken]) {
-        text(status, Math.round(marks[spoken] * 100) + ' percent.');
+        text(status, Math.round(marks[spoken] * 100) + ' ' + say('pct', 'percent.'));
         spoken++;
       }
     }
@@ -397,20 +410,20 @@ function wire(btn){
         reveal(plain, false);
       }).catch(function(err){
         console.error(PFX + ' could not open the sealed text.', err);
-        fail('Something went wrong.');
+        fail(say('fail', 'Something went wrong.'));
       });
     }
     function fail(msg){
         hide(bar);
       btn.removeAttribute('aria-disabled');
       show(btn);
-      text(status, msg + ' You can try again.');
+      text(status, msg + ' ' + say('again', 'You can try again.'));
       try { btn.focus(); } catch (e) {}
     }
     function chunked(){
       var n = BigInt(data.n), t = data.t, x = 2n, i = 0, SLICE = 4000;
       var started = Date.now(), measured = false;
-      text(status, 'Working. This will take a little while. You can keep reading the page.');
+      text(status, say('working', 'Working. This will take a little while. You can keep reading the page.'));
       (function run(){
         var end = Math.min(t, i + SLICE);
         for (; i < end; i++) x = (x * x) % n;
@@ -418,7 +431,7 @@ function wire(btn){
           measured = true;
           var rate = i / Math.max(0.001, (Date.now() - started) / 1000);
           planMarks(t / rate);
-          text(status, cap(human(t / rate)) + '.');
+          text(status, cap(human(t / rate, says)) + '.');
         }
         progress(i / t);
         if (i < t) setTimeout(run, 0); else finish(x.toString(16));
@@ -436,8 +449,8 @@ function wire(btn){
       if (m.seconds !== undefined) {
         planMarks(m.seconds);
         text(status, m.seconds < 20
-          ? cap(human(m.seconds)) + '.'
-          : cap(human(m.seconds)) + '. You can keep reading.');
+          ? cap(human(m.seconds, says)) + '.'
+          : cap(human(m.seconds, says)) + '. ' + say('keep', 'You can keep reading.'));
       } else if (m.p !== undefined) {
         progress(m.p);
       } else if (m.done !== undefined) {

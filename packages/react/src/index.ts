@@ -83,6 +83,10 @@ export type {
 // a page says without hardcoding the sentence twice.
 export { DEFAULT_SHORT, DEFAULT_TEXT } from "./notice.js";
 export type { ShieldNotice } from "./notice.js";
+// Everything <Shield locale="…"> can say, per language. SHIELD_LOCALES.en is
+// the table to copy for a language that does not ship.
+export { SHIELD_LOCALES } from "./locales.js";
+export type { ShieldLocale, ShieldStrings } from "./locales.js";
 
 // Re-exported from @shieldfont/core so a React consumer can check which encoder
 // they are running at runtime:
