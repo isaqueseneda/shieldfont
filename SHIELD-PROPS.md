@@ -87,6 +87,27 @@ get a short notice instead of the scrambled words:
 Turn it off and they silently get the decoys — fluent nonsense pasted into their
 notes, which they may not notice for a long time. That is why it defaults on.
 
+### `locale` — the language the block speaks
+
+**Default: `"en"`.** Everything the block says to a reader comes from one table:
+the sentence and buttons in the wrapper, what the screen reader announces while
+the text is opening, the wait estimate, the toasts, the clipboard notice, and the
+clipped control when there is no wrapper.
+
+```jsx
+<Shield locale="fr">Le texte que vous protégez.</Shield>
+```
+
+Ships `"en"`, `"fr"`, `"es"`, `"pt"` (Brazilian) and `"de"`. For another
+language, pass a whole table instead of a name — copy `SHIELD_LOCALES.en` and
+translate it. Anything you set with `wrapper={{ text, labels }}`,
+`copyPaste={{ notice }}` or `a11y` still wins.
+
+It does **not** translate the protection. The word pairs are English, so text in
+another language goes through mostly unchanged; this prop only changes the
+wrapper around it. An English block renders exactly as it did before the prop
+existed.
+
 ---
 
 ## Styling props

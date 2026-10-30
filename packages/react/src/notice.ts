@@ -197,6 +197,10 @@
  */
 
 /** Names the emitted script needs, all derived from the camouflage state. */
+import { SHIELD_LOCALES, fill, type ShieldStrings } from "./locales.js";
+
+const EN = SHIELD_LOCALES.en;
+
 export interface NoticeNames {
   /** Base data-attribute name, e.g. `data-typeface-a8f3`. */
   attr: string;
@@ -482,7 +486,7 @@ export interface ResolvedNotice {
   copyGuard: boolean;
 }
 
-export const DEFAULT_SHORT = "Protected from AI bots.";
+export const DEFAULT_SHORT = EN.short;
 
 /**
  * The default full explanation.
@@ -495,19 +499,14 @@ export const DEFAULT_SHORT = "Protected from AI bots.";
  * "to protect it from" rather than "to be protected from": the second stacks
  * two passives and reads badly aloud, which matters more here than on screen.
  */
-export const DEFAULT_TEXT =
-  "If you use a screen reader, custom font, or translator, please uncover the " +
-  "text before reading.";
+export const DEFAULT_TEXT = EN.text;
 
 /**
  * What lands in the clipboard when a selection touches still-protected text
  * INSIDE A DRAWN WRAPPER — so it can point at a button the reader can see.
  */
-export function clipboardNotice(showLabel: string): string {
-  return (
-    `[This text is protected from AI bots and didn’t copy correctly. ` +
-    `Use “${showLabel}” next to it, then copy again.]`
-  );
+export function clipboardNotice(showLabel: string, s: ShieldStrings = EN): string {
+  return fill(s.clipboard, { show: showLabel });
 }
 
 /**
@@ -527,13 +526,8 @@ export function clipboardNotice(showLabel: string): string {
  * Deliberately does NOT mention the wrapper or suggest turning it on. This
  * string is read by someone who just lost a paste, not by the author.
  */
-export function standaloneClipboardNotice(): string {
-  return (
-    `[This text is protected from AI bots, so what you copied is not what you ` +
-    `read on screen. A control that shows the original sits immediately before ` +
-    `this passage — reach it with the Tab key or your screen reader, show the ` +
-    `text, then copy again.]`
-  );
+export function standaloneClipboardNotice(s: ShieldStrings = EN): string {
+  return s.clipboardAlone;
 }
 
 /**
@@ -545,10 +539,9 @@ export function standaloneClipboardNotice(): string {
  * handed nonsense does not need a lesson in typography to get out of it.
  */
 /** The spoken name of the sentence on blocks after the first. See `repeat`. */
-export const DEFAULT_REPEAT = "Scrambled text. Uncover the original below.";
+export const DEFAULT_REPEAT = EN.repeat;
 
-export const DEFAULT_BROKEN =
-  "The text below isn’t showing correctly. Uncover the original to read it.";
+export const DEFAULT_BROKEN = EN.broken;
 
 /**
  * What a reader with scripts off is told, straight after {@link DEFAULT_TEXT}.
@@ -571,40 +564,42 @@ export const DEFAULT_BROKEN =
  * constant, byte-identical on every block, and is never derived from the
  * protected words, the mapping, or anything else about the block.
  */
-export const DEFAULT_NOSCRIPT =
-  "Uncovering it needs JavaScript, which is turned off in this browser, so the " +
-  "original words cannot be shown here. Turn JavaScript on for this site and reload.";
+export const DEFAULT_NOSCRIPT = EN.noScript;
 
-export function resolveNotice(n: ShieldNotice | true): ResolvedNotice {
+/**
+ * `s` supplies every default, so a `locale` changes the whole notice while
+ * anything the author set explicitly still wins over it.
+ */
+export function resolveNotice(n: ShieldNotice | true, s: ShieldStrings = EN): ResolvedNotice {
   const cfg: ShieldNotice = n === true ? {} : n;
   const l = cfg.labels ?? {};
-  const text = cfg.text ?? DEFAULT_TEXT;
+  const text = cfg.text ?? s.text;
   return {
-    short: cfg.short ?? DEFAULT_SHORT,
+    short: cfg.short ?? s.short,
     text,
-    brokenText: cfg.brokenText ?? DEFAULT_BROKEN,
-    repeat: cfg.repeat ?? DEFAULT_REPEAT,
+    brokenText: cfg.brokenText ?? s.broken,
+    repeat: cfg.repeat ?? s.repeat,
     // `??` and not `||`, so `noScript: ""` is an author turning it off rather
     // than an empty string being quietly replaced by the default.
-    noScript: cfg.noScript ?? DEFAULT_NOSCRIPT,
+    noScript: cfg.noScript ?? s.noScript,
     position: cfg.position ?? "top",
     // NOT defaulted to "". React renders `className=""` as a literal empty
     // attribute, which is a byte of signature on every wrapper on the page for
     // a feature almost nobody uses. Left undefined so the attribute is absent.
     className: cfg.className,
     labels: {
-      show: l.show ?? "Uncover",
-      copy: l.copy ?? "Copy to clipboard",
-      restore: l.restore ?? "Restore",
-      info: l.info ?? "What does this mean?",
+      show: l.show ?? s.show,
+      copy: l.copy ?? s.copy,
+      restore: l.restore ?? s.restore,
+      info: l.info ?? s.info,
       gist: l.gist,
-      showLong: l.showLong ?? "Uncover the original text",
+      showLong: l.showLong ?? s.showLong,
       // Defaults to the full explanation, so an author who translates `text`
       // gets a translated group name for free and never has to discover that
       // the frame had a second, separate string to override.
       group: l.group,
       groupOpen: l.groupOpen ?? l.group,
-      progress: l.progress ?? "Decoding progress",
+      progress: l.progress ?? s.progress,
     },
     copyGuard: cfg.copyGuard ?? true,
   };
@@ -620,8 +615,8 @@ export function resolveNotice(n: ShieldNotice | true): ResolvedNotice {
  * orphaned fragment after it. Trimmed, the ordinal joins the last clause and
  * the whole name reads as one phrase.
  */
-export function groupName(label: string, noun: string, ordinal: number): string {
-  return `${label.replace(/[.!?…]+$/, "")}, ${noun} ${ordinal}`;
+export function groupName(label: string, noun: string, ordinal: number, s: ShieldStrings = EN): string {
+  return fill(s.group, { label: label.replace(/[.!?…]+$/, ""), noun, n: ordinal });
 }
 
 /**
@@ -1316,10 +1311,15 @@ function tidy(){
   } catch (e) {}
 }
 function plural(n, a, b){ return n + ' ' + (n === 1 ? a : b); }
-function human(s){
-  if (s < 45) return 'about ' + plural(Math.max(5, Math.round(s / 5) * 5), 'second', 'seconds');
+function human(s, t){
+  t = t || {};
+  if (s < 45){
+    var n = Math.max(5, Math.round(s / 5) * 5);
+    return t.sec ? t.sec.replace('{n}', n) : 'about ' + plural(n, 'second', 'seconds');
+  }
   var m = s / 60;
-  return m < 1.5 ? 'about a minute' : 'about ' + plural(Math.round(m), 'minute', 'minutes');
+  if (m < 1.5) return t.min1 || 'about a minute';
+  return t.min ? t.min.replace('{n}', Math.round(m)) : 'about ' + plural(Math.round(m), 'minute', 'minutes');
 }
 function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 function open(hex, d, len){
@@ -1508,11 +1508,11 @@ Frame.prototype.run = function(intent, strip, own){
     if (once) return; once = true;
     marks = s < 6 ? [] : s < 20 ? [0.5] : [0.25, 0.5, 0.75];
     if (self.status) self.status.textContent =
-      (self.says.working || '') + ' ' + human(s) + (s < 20 ? '.' : '. ' + (self.says.keep || ''));
+      (self.says.working || '') + ' ' + human(s, self.says) + (s < 20 ? '.' : '. ' + (self.says.keep || ''));
     var els = q(self.root, 'est');
     var lead = self.says.working || '';
     for (var i = 0; i < els.length; i++){
-      els[i].textContent = lead ? lead + ' ' + human(s) : cap(human(s));
+      els[i].textContent = lead ? lead + ' ' + human(s, self.says) : cap(human(s, self.says));
     }
   }
   function prog(p){
